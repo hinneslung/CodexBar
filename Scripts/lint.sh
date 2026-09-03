@@ -143,7 +143,7 @@ run_portable_checks() {
 
 run_swiftformat_lint() {
   ensure_swiftformat
-  "${BIN_DIR}/swiftformat" Sources Tests --lint
+  "${BIN_DIR}/swiftformat" Sources Tests TestsWindows --lint
 }
 
 run_swiftlint() {
@@ -216,7 +216,7 @@ case "$cmd" in
     ;;
   format)
     ensure_swiftformat
-    "${BIN_DIR}/swiftformat" Sources Tests
+    "${BIN_DIR}/swiftformat" Sources Tests TestsWindows
     ensure_oxfmt
     collect_javascript_files
     "${BIN_DIR}/oxfmt" --config "${ROOT_DIR}/.oxfmtrc.json" --write "${JAVASCRIPT_FILES[@]}"

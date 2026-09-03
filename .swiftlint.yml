@@ -4,6 +4,7 @@
 included:
   - Sources
   - Tests
+  - TestsWindows
 
 # Paths to exclude
 excluded:

@@ -28,7 +28,11 @@ if [[ "$*" == "test list" ]]; then
       "${FAKE_SWIFT_BIN_PATH:?}" >&2
     exit 1
   fi
-  printf '%s\n' \
+  list_format='%s\n'
+  if [[ "${FAKE_SWIFT_MODE:-success}" == "windows_list" ]]; then
+    list_format='%s\r\r\n'
+  fi
+  printf "${list_format}" \
     "CodexBarTests.Alpha/test_one()" \
     "CodexBarTests.Alpha/test_two(argument:)" \
     "CodexBarTests.Beta/test_two" \
@@ -208,6 +212,11 @@ run_harness --group-size 4 --timeout 10 --list-only \
   | grep -v '^Discovered ' \
   | sort > "${TEMP_DIR}/shards-expected.log"
 diff -u "${TEMP_DIR}/shards-expected.log" "${TEMP_DIR}/shards-combined.log"
+
+reset_case windows-list
+export FAKE_SWIFT_MODE=windows_list
+run_harness --group-size 4 --timeout 10 --list-only > "${TEMP_DIR}/windows-list.log"
+grep -Fq "Discovered 10 selections in 3 groups." "${TEMP_DIR}/windows-list.log"
 
 reset_case group-timeout
 export FAKE_SWIFT_MODE=group_timeout

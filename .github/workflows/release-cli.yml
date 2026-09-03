@@ -1,4 +1,4 @@
-name: Release CLI
+name: Release artifacts
 
 on:
   release:
@@ -406,6 +406,20 @@ jobs:
           CODEXBAR_RESOURCE_SMOKE=1 "$OUT_DIR/codexbar" > "$SYMLINK_RESOURCE_SMOKE_OUTPUT"
           grep -Fx "CODEXBAR_RESOURCE_SMOKE_OK" "$SYMLINK_RESOURCE_SMOKE_OUTPUT"
 
+          if [[ -n "${{ matrix.swift-sdk }}" ]]; then
+            sdk_bundle="$(
+              find "$HOME" -type d -name "${{ matrix.swift-sdk }}.artifactbundle" | head -n1
+            )"
+            if [[ -z "$sdk_bundle" ]]; then
+              echo "Swift SDK artifact bundle not found for the staging launcher." >&2
+              exit 1
+            fi
+            sysroot="$sdk_bundle/${{ matrix.swift-sdk }}/swift-linux-musl/musl-1.2.5.sdk/${{ matrix.swift-sdk-arch }}"
+            launcher="$OUT_DIR/CodexBarStagingLauncher-linux-musl-${{ matrix.asset-arch }}"
+            bash Scripts/build_linux_staging_launcher.sh \
+              "${{ matrix.swift-sdk-arch }}" "$launcher" "$sysroot"
+          fi
+
           ASSET="CodexBarCLI-${SAFE_REF_NAME}-${{ matrix.asset-platform }}-${{ matrix.asset-arch }}.tar.gz"
           (cd "$OUT_DIR" && tar czf "$ASSET" \
             CodexBarCLI codexbar VERSION CodexBar_CodexBarCore.bundle)
@@ -413,6 +427,18 @@ jobs:
 
           echo "out_dir=$OUT_DIR" >> "$GITHUB_OUTPUT"
           echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Verify unchanged CLI route isolation
+        if: matrix.name == 'linux-musl-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v strace >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends strace
+          fi
+          bash TestsLinux/StagingLauncher/test_unchanged_cli_routes.sh \
+            "${{ steps.pkg.outputs.out_dir }}/CodexBarStagingLauncher-linux-musl-x86_64"
 
       - name: Upload release assets
         if: github.event_name == 'release'
@@ -426,14 +452,150 @@ jobs:
           ASSET="${{ steps.pkg.outputs.asset }}"
           gh release upload "$TAG" "$OUT_DIR/$ASSET" "$OUT_DIR/$ASSET.sha256" --clobber
 
-      - name: Upload workflow artifact (manual runs)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload workflow artifact
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          matrix.name == 'linux-musl-x64' ||
+          matrix.name == 'linux-musl-arm64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: codexbar-cli-${{ matrix.name }}
           path: |
             ${{ steps.pkg.outputs.out_dir }}/${{ steps.pkg.outputs.asset }}
             ${{ steps.pkg.outputs.out_dir }}/${{ steps.pkg.outputs.asset }}.sha256
+            ${{ steps.pkg.outputs.out_dir }}/CodexBarStagingLauncher-linux-musl-${{ matrix.asset-arch }}
+            ${{ steps.pkg.outputs.out_dir }}/CodexBarStagingLauncher-linux-musl-${{ matrix.asset-arch }}.sha256
+
+  build-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset-arch: x86_64
+            cli-arch: x86_64
+            cli-artifact: codexbar-cli-linux-musl-x64
+            build-arch: amd64
+            runs-on: windows-2025
+          - asset-arch: arm64
+            cli-arch: aarch64
+            cli-artifact: codexbar-cli-linux-musl-arm64
+            build-arch: arm64
+            runs-on: windows-11-vs2026-arm
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 35
+    needs: build-cli
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      SWIFT_VERSION: 6.3.3
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Swift ${{ env.SWIFT_VERSION }}
+        uses: compnerd/gha-setup-swift@eeda069c5bc95ac8a9ac5cea7d4f588ae5420ca5
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+          build_arch: ${{ matrix.build-arch }}
+
+      - name: Download Linux CLI payload
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ matrix.cli-artifact }}
+          path: ${{ runner.temp }}/${{ matrix.cli-artifact }}
+
+      - name: Build Windows app (release)
+        id: build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          swift --version
+          swift build -c release --product CodexBar -Xswiftc -warnings-as-errors
+          $binDirectory = (swift build -c release --product CodexBar --show-bin-path).Trim()
+          "bin_dir=$binDirectory" >> $env:GITHUB_OUTPUT
+
+      - name: Package Windows archive
+        id: package
+        shell: pwsh
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $safeTag = $env:RELEASE_TAG -replace '/', '-'
+          if ([string]::IsNullOrWhiteSpace($safeTag)) {
+            throw 'Missing release tag.'
+          }
+          if (($env:GITHUB_EVENT_NAME -eq 'release' -or $env:REQUESTED_TAG -ne '') -and
+              $safeTag -notmatch '^v[0-9A-Za-z._-]+$') {
+            throw "Invalid release tag: $safeTag"
+          }
+
+          $cliArtifactDirectory = Join-Path $env:RUNNER_TEMP '${{ matrix.cli-artifact }}'
+          $cliArchive = @(Get-ChildItem -LiteralPath $cliArtifactDirectory -Filter 'CodexBarCLI-*-linux-musl-${{ matrix.cli-arch }}.tar.gz')
+          if ($cliArchive.Count -ne 1) {
+            throw "Expected one Linux musl ${{ matrix.cli-arch }} CLI archive, found $($cliArchive.Count)."
+          }
+          $stagingLauncher = Join-Path $cliArtifactDirectory 'CodexBarStagingLauncher-linux-musl-${{ matrix.cli-arch }}'
+          if (-not (Test-Path -LiteralPath $stagingLauncher -PathType Leaf)) {
+            throw "Missing Linux musl ${{ matrix.cli-arch }} staging launcher."
+          }
+
+          $package = & ./Scripts/package_windows_release.ps1 `
+            -AppBinDirectory '${{ steps.build.outputs.bin_dir }}' `
+            -CLIArchive $cliArchive[0].FullName `
+            -StagingLauncher $stagingLauncher `
+            -SafeRefName $safeTag `
+            -AssetArchitecture '${{ matrix.asset-arch }}' `
+            -OutputDirectory $env:RUNNER_TEMP
+          "asset=$($package.AssetPath)" >> $env:GITHUB_OUTPUT
+          "checksum=$($package.ChecksumPath)" >> $env:GITHUB_OUTPUT
+
+      - name: Smoke-start fully extracted packaged app
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expectedRunnerArchitecture = if ('${{ matrix.asset-arch }}' -eq 'x86_64') { 'AMD64' } else { 'ARM64' }
+          if ($env:PROCESSOR_ARCHITECTURE -ne $expectedRunnerArchitecture) {
+            throw "Runner architecture is $env:PROCESSOR_ARCHITECTURE; expected $expectedRunnerArchitecture."
+          }
+
+          $smokeDirectory = Join-Path $env:RUNNER_TEMP 'codexbar-windows-smoke'
+          Expand-Archive -LiteralPath '${{ steps.package.outputs.asset }}' -DestinationPath $smokeDirectory
+          $env:CODEXBAR_WINDOWS_OFFLINE = '1'
+          $originalPath = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          try {
+            $process = Start-Process `
+              -FilePath (Join-Path $smokeDirectory 'CodexBar.exe') `
+              -WorkingDirectory $smokeDirectory `
+              -PassThru
+            Start-Sleep -Seconds 5
+            if ($process.HasExited) {
+              throw "Packaged CodexBar.exe exited during smoke start with code $($process.ExitCode)."
+            }
+          } finally {
+            $env:PATH = $originalPath
+            if ($null -ne $process -and -not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+              $process.WaitForExit()
+            }
+          }
+
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release upload $env:RELEASE_TAG '${{ steps.package.outputs.asset }}' '${{ steps.package.outputs.checksum }}' --clobber
+
+      - name: Upload workflow artifact (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codexbar-windows-${{ matrix.asset-arch }}
+          path: |
+            ${{ steps.package.outputs.asset }}
+            ${{ steps.package.outputs.checksum }}
 
   update-homebrew-tap:
     runs-on: ubuntu-24.04

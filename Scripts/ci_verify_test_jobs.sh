@@ -10,6 +10,7 @@ macos_tests_deferred="${5:-}"
 linux_musl_build_required="${6:-}"
 linux_musl_build_result="${7:-}"
 linux_build_result="${8-<missing>}"
+windows_test_result="${9:-}"
 
 if [[ "$lint_result" != "success" ]]; then
   printf 'lint job finished with %s\n' "${lint_result:-<empty>}" >&2
@@ -46,6 +47,13 @@ case "${macos_tests_required}:${macos_tests_deferred}:${macos_test_result}" in
 esac
 
 printf 'Linux glibc CLI matrix passed.\n'
+
+if [[ "$windows_test_result" != "success" ]]; then
+  printf 'Windows Swift test job finished with %s\n' "${windows_test_result:-<empty>}" >&2
+  exit 1
+fi
+
+printf 'Windows Swift tests passed.\n'
 
 case "${linux_musl_build_required}:${linux_musl_build_result}" in
   true:success)

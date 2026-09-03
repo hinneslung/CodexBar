@@ -6,7 +6,9 @@ xcuserdata/
 *.local
 
 # Build products
-.build/
+.build/*
+!.build/README.md
+.build-appidentity/
 DerivedData
 
 # Bundles / artifacts

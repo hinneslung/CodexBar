@@ -16,8 +16,10 @@ Homebrew is for the UI app via Cask. When installed via Homebrew, CodexBar disab
 ## 1) Release CodexBar normally
 Follow `docs/RELEASING.md` to publish `CodexBar-macos-universal-<version>.zip` to GitHub Releases.
 
-## 2) Let the Release CLI workflow update the tap
-After the GitHub release is published, `.github/workflows/release-cli.yml` builds the standalone CLI assets and dispatches `steipete/homebrew-tap`'s `update-formula.yml`. That tap workflow updates both:
+## 2) Let the Release artifacts workflow update the tap
+After the GitHub release is published, `.github/workflows/release-cli.yml` builds the standalone CLI
+and Windows assets, then dispatches `steipete/homebrew-tap`'s `update-formula.yml`. That tap workflow
+updates both:
 - `Casks/codexbar.rb` for the app zip.
 - `Formula/codexbar.rb` for the standalone CLI tarballs.
 
