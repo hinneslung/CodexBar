@@ -80,18 +80,173 @@
           sourceText: placeholder) == "Ubuntu · Automatic")
     }
 
-    @Test("disabled summaries derive OpenCode and manual capabilities without duplicates")
-    func summarizesCapabilities() {
+    @Test("automatic credential guidance reflects verified provider methods")
+    func automaticCredentialGuidance() {
       #expect(
-        WindowsProviderCapabilityPresentation.summary(provider: .openCodeGo)
-          == "Auto · OpenCode · API key · Browser session")
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .kimi)
+          == "Automatically uses its OpenCode CLI connection. "
+          + "Otherwise, uses credentials from the provider's app or CLI. "
+          + "Select a manual option if Automatic fails."
+      )
       #expect(
-        WindowsProviderCapabilityPresentation.summary(provider: .codex) == "Auto")
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .amp)
+          == "Automatically uses credentials from the provider's app or CLI. "
+          + "Select a manual option if Automatic fails.")
+      #expect(
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .codex)
+          == "Automatically uses credentials from the provider's app or CLI.")
+      #expect(
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .openCodeGo)
+          == "Automatically uses its OpenCode CLI connection. "
+          + "Otherwise, uses CodexBar CLI credentials. "
+          + "Select a manual option if Automatic fails.")
+      #expect(
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .clinePass)
+          == "Automatically uses its OpenCode CLI connection. "
+          + "Otherwise, uses CodexBar CLI credentials.")
+      #expect(
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .deepgram)
+          == "Automatically uses CodexBar CLI credentials. "
+          + "Select a manual option if Automatic fails.")
+      #expect(
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .factory)
+          == "Automatically uses CodexBar CLI credentials.")
 
       for provider in WindowsProviderCatalog.entries.map(\.id) {
-        let labels = WindowsProviderCapabilityPresentation.summary(provider: provider)
+        let description =
+          WindowsProviderConfigurationCatalog
+          .automaticCredentialDescription(provider: provider)
+        #expect(!description.contains("\n"))
+      }
+    }
+
+    @Test("disabled summaries compose verified capabilities in order without duplicates")
+    func summarizesCapabilities() {
+      #expect(
+        WindowsProviderCapabilityPresentation.labels(
+          providerSignIn: true,
+          supportsOpenCode: true,
+          manualLabels: ["API key", "Browser session", "Session token"])
+          == ["Provider app/CLI", "OpenCode", "API key", "Browser session", "Session token"])
+      #expect(
+        WindowsProviderCapabilityPresentation.labels(
+          providerSignIn: true,
+          supportsOpenCode: true,
+          manualLabels: ["opencode", "PROVIDER APP/CLI", "API key", "api KEY"])
+          == ["Provider app/CLI", "OpenCode", "API key"])
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .amp)
+          == "Provider app/CLI · API key · Browser session")
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .kimi)
+          == "Provider app/CLI · OpenCode · API key")
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .openCodeGo)
+          == "OpenCode · API key · Browser session")
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .codex)
+          == "Provider app/CLI")
+
+      for provider in WindowsProviderCatalog.entries.map(\.id) {
+        let summary = WindowsProviderCapabilityPresentation.summary(provider: provider)
+        #expect(!summary.components(separatedBy: " · ").contains("Auto"))
+        let labels =
+          summary
           .components(separatedBy: " · ")
         #expect(Set(labels.map { $0.lowercased() }).count == labels.count)
+      }
+    }
+
+    @Test("manual capability summaries preserve session and browser credential labels")
+    func preservesManualCapabilityLabels() {
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .stepFun)
+          .components(separatedBy: " · ").contains("Session token"))
+
+      for provider in [
+        WindowsProviderID.alibabaTokenPlan, .amp, .commandCode, .cursor, .grok,
+        .ollama, .openCodeGo, .qoder, .qwenCloud, .sakana,
+      ] {
+        #expect(
+          WindowsProviderCapabilityPresentation.summary(provider: provider)
+            .components(separatedBy: " · ").contains("Browser session"))
+      }
+    }
+
+    @Test("available providers without verified capabilities have no subtitle")
+    func emptyCapabilitySummary() {
+      #expect(WindowsProviderCapabilityPresentation.summary(provider: .factory).isEmpty)
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .cursor)
+          == "Browser session")
+    }
+
+    @Test("provider sign-in metadata remains tied to reviewed upstream routes")
+    func providerSignInMetadataMatchesUpstreamEvidence() throws {
+      let cliProviders: Set<WindowsProviderID> = [
+        .amp, .antigravity, .augment, .claude, .codex, .doubao, .grok, .kilo, .kiro,
+      ]
+      let providerStateProviders: Set<WindowsProviderID> = [
+        .bedrock, .codebuff, .gemini, .jetBrains, .kimi, .vertexAI,
+      ]
+      #expect(
+        WindowsProviderConfigurationCatalog.providerSignInProviderIDs
+          == cliProviders.union(providerStateProviders))
+      #expect(
+        Set(
+          WindowsProviderConfigurationCatalog.providerSignInEvidence.compactMap {
+            provider, evidence in
+            evidence == .providerCLI ? provider : nil
+          }) == cliProviders)
+      #expect(
+        Set(
+          WindowsProviderConfigurationCatalog.providerSignInEvidence.compactMap {
+            provider, evidence in
+            evidence == .providerOwnedAuthenticationState ? provider : nil
+          }) == providerStateProviders)
+
+      let descriptorPaths: [WindowsProviderID: String] = [
+        .amp: "Amp/AmpProviderDescriptor.swift",
+        .antigravity: "Antigravity/AntigravityProviderDescriptor.swift",
+        .augment: "Augment/AugmentProviderDescriptor.swift",
+        .claude: "Claude/ClaudeProviderDescriptor.swift",
+        .codex: "Codex/CodexProviderDescriptor.swift",
+        .doubao: "Doubao/DoubaoProviderDescriptor.swift",
+        .grok: "Grok/GrokProviderDescriptor.swift",
+        .kilo: "Kilo/KiloProviderDescriptor.swift",
+        .kiro: "Kiro/KiroProviderDescriptor.swift",
+      ]
+      for provider in cliProviders {
+        let relativePath = try #require(descriptorPaths[provider])
+        let descriptor = try Self.upstreamProviderSource(relativePath)
+        let sourceModes = try #require(Self.sourceModes(in: descriptor))
+        #expect(sourceModes.contains(".cli"), "Missing reviewed CLI source mode for \(provider)")
+      }
+
+      let stateEvidence: [(String, String)] = [
+        ("Bedrock/BedrockProviderDescriptor.swift", "BedrockSettingsReader.profile(environment:"),
+        (
+          "Codebuff/CodebuffProviderDescriptor.swift",
+          "CodebuffSettingsReader.authToken(authFileURL:"
+        ),
+        (
+          "Gemini/GeminiStatusProbe.swift",
+          "private static let credentialsPath = \"/.gemini/oauth_creds.json\""
+        ),
+        (
+          "JetBrains/JetBrainsProviderDescriptor.swift", "let kind: ProviderFetchKind = .localProbe"
+        ),
+        (
+          "Kimi/KimiProviderDescriptor.swift",
+          "KimiSettingsReader.hasKimiCodeCredential(environment:"
+        ),
+        (
+          "VertexAI/VertexAIProviderDescriptor.swift",
+          "VertexAIOAuthCredentialsStore.hasCredentials(environment:"
+        ),
+      ]
+      for (relativePath, marker) in stateEvidence {
+        #expect(try Self.upstreamProviderSource(relativePath).contains(marker))
       }
     }
 
@@ -340,6 +495,24 @@
         "error": NSNull(),
       ]
       return try JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private static func upstreamProviderSource(_ relativePath: String) throws -> String {
+      let repositoryRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+      let url =
+        repositoryRoot
+        .appendingPathComponent("Sources/CodexBarCore/Providers", isDirectory: true)
+        .appendingPathComponent(relativePath, isDirectory: false)
+      return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private static func sourceModes(in descriptor: String) -> Substring? {
+      guard let start = descriptor.range(of: "sourceModes:")?.upperBound,
+        let end = descriptor[start...].firstIndex(of: "]")
+      else { return nil }
+      return descriptor[start..<end]
     }
   }
 #endif

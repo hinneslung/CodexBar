@@ -183,17 +183,28 @@ enum WindowsProviderCapabilityPresentation {
     if WindowsProviderConfigurationCatalog.unavailableProviderIDs.contains(provider) {
       return "Unavailable on Windows"
     }
-    var labels = ["Auto"]
-    if WindowsProviderCredentialBridge.supports(provider) {
-      labels.append("OpenCode")
-    }
-    labels.append(
-      contentsOf: WindowsProviderConfigurationCatalog.byProvider[provider]?
-        .manualCredentialSets.map(\.label) ?? [])
+    return self.labels(
+      providerSignIn: WindowsProviderConfigurationCatalog.providerSignInProviderIDs.contains(
+        provider),
+      supportsOpenCode: WindowsProviderCredentialBridge.supports(provider),
+      manualLabels: WindowsProviderConfigurationCatalog.byProvider[provider]?
+        .manualCredentialSets.map(\.label) ?? []
+    ).joined(separator: " · ")
+  }
+
+  static func labels(
+    providerSignIn: Bool,
+    supportsOpenCode: Bool,
+    manualLabels: [String]
+  ) -> [String] {
+    var labels: [String] = []
+    if providerSignIn { labels.append("Provider app/CLI") }
+    if supportsOpenCode { labels.append("OpenCode") }
+    labels.append(contentsOf: manualLabels)
 
     var seen = Set<String>()
     return labels.filter { label in
       seen.insert(label.lowercased()).inserted
-    }.joined(separator: " · ")
+    }
   }
 }

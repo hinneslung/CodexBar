@@ -205,12 +205,12 @@
       let disabled = WindowsProviderConfiguration(id: .openCodeGo, enabled: false, order: 0)
       #expect(
         WindowsProviderSettingsPresentation.subtitle(configuration: disabled, sourceText: nil)
-          == "Auto · OpenCode · API key · Browser session")
+          == "OpenCode · API key · Browser session")
 
-      let unsupported = WindowsProviderConfiguration(id: .codex, enabled: false, order: 0)
+      let providerSignIn = WindowsProviderConfiguration(id: .codex, enabled: false, order: 0)
       #expect(
-        WindowsProviderSettingsPresentation.subtitle(configuration: unsupported, sourceText: nil)
-          == "Auto")
+        WindowsProviderSettingsPresentation.subtitle(configuration: providerSignIn, sourceText: nil)
+          == "Provider app/CLI")
 
       for provider in WindowsProviderConfigurationCatalog.unavailableProviderIDs {
         let configuration = WindowsProviderConfiguration(id: provider, enabled: false, order: 0)

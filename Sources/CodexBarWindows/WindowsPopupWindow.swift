@@ -1229,14 +1229,15 @@ final class WindowsPopupWindow {
     {
       let fields = self.activeConfigurationFields
       if self.configurationCredentialSetDraftID == nil {
+        let hintHeight = self.configurationAutomaticHintHeight(provider: provider)
         WindowsDashboardDrawing.text(
-          WindowsProviderConfigurationCatalog.automaticCredentialDescription,
+          WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: provider),
           dc: dc,
           rect: RECT(
             left: inset,
             top: y,
             right: client.right - inset,
-            bottom: y + self.scaled(34)),
+            bottom: y + hintHeight - self.scaled(4)),
           color: WindowsDashboardPalette.captionText,
           font: self.secondaryFont,
           format: UINT(DT_LEFT | DT_TOP | DT_WORDBREAK))
@@ -1301,15 +1302,23 @@ final class WindowsPopupWindow {
         }
       }
       y = self.configurationFieldRowTop(index: fields.count)
+      if self.configurationCredentialSetDraftID == nil {
+        y += self.configurationAutomaticHintHeight(provider: provider)
+      }
     } else if WindowsProviderConfigurationCatalog.byProvider[provider] == nil {
+      let hintHeight = self.configurationAutomaticHintHeight(provider: provider)
       WindowsDashboardDrawing.text(
-        WindowsProviderConfigurationCatalog.automaticCredentialDescription,
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: provider),
         dc: dc,
-        rect: RECT(left: inset, top: y, right: client.right - inset, bottom: y + self.scaled(32)),
+        rect: RECT(
+          left: inset,
+          top: y,
+          right: client.right - inset,
+          bottom: y + hintHeight - self.scaled(4)),
         color: WindowsDashboardPalette.captionText,
         font: self.secondaryFont,
         format: UINT(DT_LEFT | DT_TOP | DT_WORDBREAK))
-      y += self.scaled(38)
+      y += hintHeight
     }
     let error =
       self.configurationCapabilitiesError
@@ -1844,6 +1853,33 @@ final class WindowsPopupWindow {
     }
     return self.scaled(Metrics.headerHeight + 96) + self.configurationCredentialHelpHeight
       + priorHeight - self.scrollOffset
+  }
+
+  private func configurationAutomaticHintHeight(provider: WindowsProviderID) -> Int32 {
+    let text = WindowsProviderConfigurationCatalog.automaticCredentialDescription(
+      provider: provider)
+    guard let window = self.window, let dc = GetDC(window) else { return self.scaled(38) }
+    defer { _ = ReleaseDC(window, dc) }
+    let oldFont = self.secondaryFont.map { SelectObject(dc, $0) }
+    defer {
+      if let oldFont { _ = SelectObject(dc, oldFont) }
+    }
+    var client = RECT()
+    _ = GetClientRect(window, &client)
+    var rect = RECT(
+      left: 0,
+      top: 0,
+      right: max(1, client.right - self.scaled(Metrics.horizontalInset * 2)),
+      bottom: 0)
+    WindowsWideString.withPointer(text) { pointer in
+      _ = DrawTextW(
+        dc,
+        pointer,
+        -1,
+        &rect,
+        UINT(DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX))
+    }
+    return max(self.scaled(18), rect.bottom - rect.top) + self.scaled(6)
   }
 
   private var configurationCredentialHelpHeight: Int32 {
@@ -2573,10 +2609,14 @@ final class WindowsPopupWindow {
       $0 + self.configurationFieldRowHeight($1)
     }
     let loadingHeight: Int32 = self.configurationPendingRequestID == nil ? 0 : 38
-    let automaticHintHeight: Int32 = self.configurationCredentialSetDraftID == nil ? 38 : 0
-    return self.scaled(96 + automaticHintHeight + loadingHeight + errorHeight)
+    let automaticHintHeight: Int32 =
+      self.configurationCredentialSetDraftID == nil
+      ? self.configurationAutomaticHintHeight(provider: provider)
+      : 0
+    return self.scaled(96 + loadingHeight + errorHeight)
       + self.configurationCredentialHelpHeight
       + fieldsHeight
+      + automaticHintHeight
   }
 
   private func anchoredOrigin(size: SIZE) -> POINT {
