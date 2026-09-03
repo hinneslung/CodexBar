@@ -410,7 +410,7 @@ run_open_code_bridge_route() {
 
 manual_api_providers=(
   aiand alibaba amp azureopenai chutes claude codebuff copilot crof deepgram
-  deepinfra doubao elevenlabs fireworks groq ibmbob kilo kimi litellm llmproxy
+  deepinfra doubao elevenlabs factory fireworks groq ibmbob kilo kimi litellm llmproxy
   moonshot neuralwatt ollama openai opencodego openrouter poe sub2api synthetic
   venice warp xai zai zenmux clawrouter
 )

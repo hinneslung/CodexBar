@@ -43,9 +43,10 @@ struct WindowsProviderSourcePresentation: Equatable, Sendable {
   func resolvingUpstream(_ value: String?, provider: WindowsProviderID? = nil) -> Self {
     switch self.kind {
     case .automatic:
+      let label = Self.automaticUpstreamLabel(value, provider: provider)
       return Self(
         distributionLabel: self.distributionLabel,
-        kind: .upstream(Self.upstreamLabel(value, provider: provider)),
+        kind: .upstream(label),
         isResolved: true)
     case .openCode, .manual:
       return Self(distributionLabel: self.distributionLabel, kind: self.kind, isResolved: true)
@@ -128,6 +129,20 @@ struct WindowsProviderSourcePresentation: Equatable, Sendable {
         options: .caseInsensitive))
   }
 
+  private static func automaticUpstreamLabel(
+    _ value: String?,
+    provider: WindowsProviderID?
+  ) -> String {
+    if let provider,
+      WindowsProviderConfigurationCatalog.providerAppOrCLIProviderIDs.contains(provider),
+      let normalized = Self.normalized(value)?.lowercased(),
+      ["api", "api key", "cli", "provider cli"].contains(normalized)
+    {
+      return "Provider app/CLI"
+    }
+    return Self.upstreamLabel(value, provider: provider)
+  }
+
   private static func canonicalIdentifier(_ value: String) -> String {
     value.unicodeScalars
       .filter { CharacterSet.alphanumerics.contains($0) }
@@ -184,7 +199,7 @@ enum WindowsProviderCapabilityPresentation {
       return "Unavailable on Windows"
     }
     return self.labels(
-      providerSignIn: WindowsProviderConfigurationCatalog.providerSignInProviderIDs.contains(
+      providerAppOrCLI: WindowsProviderConfigurationCatalog.providerAppOrCLIProviderIDs.contains(
         provider),
       supportsOpenCode: WindowsProviderCredentialBridge.supports(provider),
       manualLabels: WindowsProviderConfigurationCatalog.byProvider[provider]?
@@ -193,12 +208,12 @@ enum WindowsProviderCapabilityPresentation {
   }
 
   static func labels(
-    providerSignIn: Bool,
+    providerAppOrCLI: Bool,
     supportsOpenCode: Bool,
     manualLabels: [String]
   ) -> [String] {
     var labels: [String] = []
-    if providerSignIn { labels.append("Provider app/CLI") }
+    if providerAppOrCLI { labels.append("Provider app/CLI") }
     if supportsOpenCode { labels.append("OpenCode") }
     labels.append(contentsOf: manualLabels)
 

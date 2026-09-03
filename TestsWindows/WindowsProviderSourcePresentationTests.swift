@@ -110,7 +110,11 @@
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .factory)
-          == "Automatically uses CodexBar CLI credentials.")
+          == "Automatically uses credentials from the provider's app or CLI. "
+          + "Select a manual option if Automatic fails.")
+      #expect(
+        WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .wayfinder)
+          == "Automatically uses credentials from the provider's app or CLI.")
 
       for provider in WindowsProviderCatalog.entries.map(\.id) {
         let description =
@@ -124,13 +128,13 @@
     func summarizesCapabilities() {
       #expect(
         WindowsProviderCapabilityPresentation.labels(
-          providerSignIn: true,
+          providerAppOrCLI: true,
           supportsOpenCode: true,
           manualLabels: ["API key", "Browser session", "Session token"])
           == ["Provider app/CLI", "OpenCode", "API key", "Browser session", "Session token"])
       #expect(
         WindowsProviderCapabilityPresentation.labels(
-          providerSignIn: true,
+          providerAppOrCLI: true,
           supportsOpenCode: true,
           manualLabels: ["opencode", "PROVIDER APP/CLI", "API key", "api KEY"])
           == ["Provider app/CLI", "OpenCode", "API key"])
@@ -145,6 +149,12 @@
           == "OpenCode · API key · Browser session")
       #expect(
         WindowsProviderCapabilityPresentation.summary(provider: .codex)
+          == "Provider app/CLI")
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .factory)
+          == "Provider app/CLI · API key")
+      #expect(
+        WindowsProviderCapabilityPresentation.summary(provider: .wayfinder)
           == "Provider app/CLI")
 
       for provider in WindowsProviderCatalog.entries.map(\.id) {
@@ -173,9 +183,13 @@
       }
     }
 
-    @Test("available providers without verified capabilities have no subtitle")
-    func emptyCapabilitySummary() {
-      #expect(WindowsProviderCapabilityPresentation.summary(provider: .factory).isEmpty)
+    @Test("every usable provider has a verified capability subtitle")
+    func usableProvidersHaveCapabilitySummary() {
+      for provider in WindowsProviderCatalog.entries.map(\.id) {
+        guard !WindowsProviderConfigurationCatalog.unavailableProviderIDs.contains(provider)
+        else { continue }
+        #expect(!WindowsProviderCapabilityPresentation.summary(provider: provider).isEmpty)
+      }
       #expect(
         WindowsProviderCapabilityPresentation.summary(provider: .cursor)
           == "Browser session")
@@ -189,21 +203,28 @@
       let providerStateProviders: Set<WindowsProviderID> = [
         .bedrock, .codebuff, .gemini, .jetBrains, .kimi, .vertexAI,
       ]
+      let localSourceProviders: Set<WindowsProviderID> = [.factory, .wayfinder]
       #expect(
-        WindowsProviderConfigurationCatalog.providerSignInProviderIDs
-          == cliProviders.union(providerStateProviders))
+        WindowsProviderConfigurationCatalog.providerAppOrCLIProviderIDs
+          == cliProviders.union(providerStateProviders).union(localSourceProviders))
       #expect(
         Set(
-          WindowsProviderConfigurationCatalog.providerSignInEvidence.compactMap {
+          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence.compactMap {
             provider, evidence in
             evidence == .providerCLI ? provider : nil
           }) == cliProviders)
       #expect(
         Set(
-          WindowsProviderConfigurationCatalog.providerSignInEvidence.compactMap {
+          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence.compactMap {
             provider, evidence in
             evidence == .providerOwnedAuthenticationState ? provider : nil
           }) == providerStateProviders)
+      #expect(
+        Set(
+          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence.compactMap {
+            provider, evidence in
+            evidence == .providerOwnedLocalSource ? provider : nil
+          }) == localSourceProviders)
 
       let descriptorPaths: [WindowsProviderID: String] = [
         .amp: "Amp/AmpProviderDescriptor.swift",
@@ -248,6 +269,13 @@
       for (relativePath, marker) in stateEvidence {
         #expect(try Self.upstreamProviderSource(relativePath).contains(marker))
       }
+      let localSourceEvidence: [(String, String)] = [
+        ("Factory/FactoryProviderDescriptor.swift", "FactorySettingsReader.apiKey(environment:"),
+        ("Wayfinder/WayfinderProviderDescriptor.swift", "WayfinderGatewayFetchStrategy()"),
+      ]
+      for (relativePath, marker) in localSourceEvidence {
+        #expect(try Self.upstreamProviderSource(relativePath).contains(marker))
+      }
     }
 
     @Test("unavailable provider metadata is the single configuration gate")
@@ -286,6 +314,17 @@
       #expect(api.sourceText == "Ubuntu · API key")
       #expect(api.source.isResolved)
       #expect(specific.sourceText == "Ubuntu · Claude CLI")
+
+      let factory = try WindowsCanonicalCLIProviderClient.decode(
+        data: try Self.payload(source: "api", provider: .factory),
+        requestedProvider: .factory,
+        source: automatic)
+      let wayfinder = try WindowsCanonicalCLIProviderClient.decode(
+        data: try Self.payload(source: "api", provider: .wayfinder),
+        requestedProvider: .wayfinder,
+        source: automatic)
+      #expect(factory.sourceText == "Ubuntu · Provider app/CLI")
+      #expect(wayfinder.sourceText == "Ubuntu · Provider app/CLI")
     }
 
     @Test("canonical source decoding recognizes provider and mechanism patterns")
@@ -346,9 +385,17 @@
         data: try Self.payload(source: "api"),
         requestedProvider: .poe,
         source: .init(distributionLabel: "Ubuntu", kind: .openCode, isResolved: false))
+      let factory = try WindowsCanonicalCLIProviderClient.decode(
+        data: try Self.payload(source: "api", provider: .factory),
+        requestedProvider: .factory,
+        source: .init(
+          distributionLabel: "Ubuntu",
+          kind: .manual("API key"),
+          isResolved: false))
 
       #expect(manual.sourceText == "Debian · API key")
       #expect(openCode.sourceText == "Ubuntu · OpenCode")
+      #expect(factory.sourceText == "Ubuntu · API key")
       #expect(!openCode.sourceText.contains("OpenCode · WSL CLI"))
       #expect(manual.source.isResolved)
       #expect(openCode.source.isResolved)
