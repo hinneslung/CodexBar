@@ -156,14 +156,15 @@ struct WindowsUnavailableProviderInfo: Sendable, Equatable {
 /// Declarative Windows-owned manual credential catalog. It mirrors only configuration fields and
 /// source routes already consumed by the unchanged bundled Linux CLI.
 enum WindowsProviderConfigurationCatalog {
-  enum ProviderSignInEvidence: Sendable, Equatable {
+  enum ProviderAppOrCLIEvidence: Sendable, Equatable {
     case providerCLI
     case providerOwnedAuthenticationState
+    case providerOwnedLocalSource
   }
 
   /// Providers whose upstream descriptor has a reviewed non-manual route through the provider's
-  /// CLI or provider-owned authentication state. Automatic selection alone is not evidence.
-  static let providerSignInEvidence: [WindowsProviderID: ProviderSignInEvidence] = [
+  /// CLI, app-owned authentication state, or local service. Automatic selection alone is not evidence.
+  static let providerAppOrCLIEvidence: [WindowsProviderID: ProviderAppOrCLIEvidence] = [
     .amp: .providerCLI,
     .antigravity: .providerCLI,
     .augment: .providerCLI,
@@ -172,6 +173,7 @@ enum WindowsProviderConfigurationCatalog {
     .codebuff: .providerOwnedAuthenticationState,
     .codex: .providerCLI,
     .doubao: .providerCLI,
+    .factory: .providerOwnedLocalSource,
     .gemini: .providerOwnedAuthenticationState,
     .grok: .providerCLI,
     .jetBrains: .providerOwnedAuthenticationState,
@@ -179,17 +181,18 @@ enum WindowsProviderConfigurationCatalog {
     .kimi: .providerOwnedAuthenticationState,
     .kiro: .providerCLI,
     .vertexAI: .providerOwnedAuthenticationState,
+    .wayfinder: .providerOwnedLocalSource,
   ]
 
-  static var providerSignInProviderIDs: Set<WindowsProviderID> {
-    Set(self.providerSignInEvidence.keys)
+  static var providerAppOrCLIProviderIDs: Set<WindowsProviderID> {
+    Set(self.providerAppOrCLIEvidence.keys)
   }
 
   static func automaticCredentialDescription(provider: WindowsProviderID) -> String {
-    let providerSignIn = self.providerSignInProviderIDs.contains(provider)
+    let providerAppOrCLI = self.providerAppOrCLIProviderIDs.contains(provider)
     let supportsOpenCode = WindowsProviderCredentialBridge.supports(provider)
     var sentences: [String] =
-      switch (providerSignIn, supportsOpenCode) {
+      switch (providerAppOrCLI, supportsOpenCode) {
       case (true, true):
         [
           "Automatically uses its OpenCode CLI connection.",
@@ -216,7 +219,7 @@ enum WindowsProviderConfigurationCatalog {
   /// API routes whose staged `apiKey` was proven to be consumed by the unchanged release CLI.
   static let manualAPIProviderIDs: Set<WindowsProviderID> = [
     .aiAnd, .alibaba, .amp, .azureOpenAI, .chutes, .claude, .codebuff, .copilot,
-    .crof, .deepgram, .deepInfra, .doubao, .elevenLabs, .fireworks, .groq, .ibmBob,
+    .crof, .deepgram, .deepInfra, .doubao, .elevenLabs, .factory, .fireworks, .groq, .ibmBob,
     .kilo, .kimi, .liteLLM, .llmProxy, .moonshot, .neuralwatt, .ollama, .openai,
     .openCodeGo, .openRouter, .poe, .sub2API, .synthetic, .venice, .warp, .xAI,
     .zai, .zenMux, .clawRouter,

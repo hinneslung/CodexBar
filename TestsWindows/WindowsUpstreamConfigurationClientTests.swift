@@ -35,7 +35,7 @@
       let expectedManualAPIProviderIDs: Set = [
         "aiand", "alibaba", "amp", "azureopenai", "chutes", "claude", "codebuff",
         "clawrouter", "copilot", "crof", "deepgram", "deepinfra", "doubao",
-        "elevenlabs", "fireworks", "groq", "ibmbob", "kilo", "kimi", "litellm",
+        "elevenlabs", "factory", "fireworks", "groq", "ibmbob", "kilo", "kimi", "litellm",
         "llmproxy", "moonshot", "neuralwatt", "ollama", "openai", "opencodego",
         "openrouter", "poe", "sub2api", "synthetic", "venice", "warp", "xai", "zai",
         "zenmux",
@@ -50,7 +50,7 @@
         })
       #expect(actualManualAPIProviderIDs == expectedManualAPIProviderIDs)
       let disabledManualAPIProviderIDs: Set = [
-        "alibabatokenplan", "clinepass", "commandcode", "cursor", "deepseek", "factory",
+        "alibabatokenplan", "clinepass", "commandcode", "cursor", "deepseek",
         "grok", "minimax", "qoder", "qwencloud", "sakana",
       ]
       #expect(
