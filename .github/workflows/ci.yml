@@ -209,6 +209,52 @@ jobs:
             printf '| Runs lint-macos | `%s` |\n' "$RUNS_LINT_MACOS"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  swift-test-windows:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Swift ${{ env.SWIFT_VERSION }}
+        uses: compnerd/gha-setup-swift@eeda069c5bc95ac8a9ac5cea7d4f588ae5420ca5
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+
+      - name: Swift toolchain version
+        shell: pwsh
+        run: |
+          swift --version
+          swift package --version
+
+      - name: Build notification-area app
+        shell: pwsh
+        run: swift build --product CodexBar -Xswiftc -warnings-as-errors
+
+      - name: Windows portability tests
+        shell: pwsh
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Cross-build ARM64 notification-area app
+        shell: pwsh
+        run: >-
+          swift build -c release --product CodexBar
+          --triple aarch64-unknown-windows-msvc
+          -Xswiftc -warnings-as-errors
+
+      - name: Verify ARM64 Windows GUI executable
+        shell: pwsh
+        run: |
+          $bin = swift build -c release --product CodexBar `
+            --triple aarch64-unknown-windows-msvc --show-bin-path
+          $headers = llvm-readobj --file-headers (Join-Path $bin 'CodexBar.exe')
+          if ($headers -notmatch 'IMAGE_FILE_MACHINE_ARM64') {
+            throw 'CodexBar.exe is not an ARM64 PE executable.'
+          }
+          if ($headers -notmatch 'IMAGE_SUBSYSTEM_WINDOWS_GUI') {
+            throw 'CodexBar.exe is not a Windows GUI executable.'
+          }
+
   lint-build-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -216,6 +262,7 @@ jobs:
       - changes
       - lint
       - swift-test-macos
+      - swift-test-windows
       - build-linux-musl-cli
     if: ${{ always() && !cancelled() }}
     steps:
@@ -230,7 +277,8 @@ jobs:
             "${{ needs.swift-test-macos.result }}" \
             "${{ needs.changes.outputs.macos-tests-deferred }}" \
             "${{ needs.changes.outputs.linux-musl-build }}" \
-            "${{ needs.build-linux-musl-cli.result }}"
+            "${{ needs.build-linux-musl-cli.result }}" \
+            "${{ needs.swift-test-windows.result }}"
 
       - name: Summarize aggregate CI gate
         if: ${{ always() }}
@@ -245,6 +293,7 @@ jobs:
           LINUX_MUSL_BUILD: ${{ needs.changes.outputs.linux-musl-build }}
           LINUX_MUSL_BUILD_REASON: ${{ needs.changes.outputs.linux-musl-build-reason }}
           LINUX_MUSL_RESULT: ${{ needs.build-linux-musl-cli.result }}
+          WINDOWS_RESULT: ${{ needs.swift-test-windows.result }}
         run: |
           set -euo pipefail
           reason="${MACOS_TESTS_REASON:-<unset>}"
@@ -264,6 +313,7 @@ jobs:
             printf '| Linux musl build required | `%s` |\n' "${LINUX_MUSL_BUILD:-<unset>}"
             printf '| Linux musl gate reason | %s |\n' "$musl_reason"
             printf '| build-linux-musl-cli result | `%s` |\n' "$LINUX_MUSL_RESULT"
+            printf '| swift-test-windows result | `%s` |\n' "$WINDOWS_RESULT"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-linux-musl-cli:
@@ -439,6 +489,22 @@ jobs:
           swift build -c release --product CodexBarCLI
           --swift-sdk "$SWIFT_STATIC_LINUX_SDK"
           --triple "$SWIFT_STATIC_LINUX_SDK_TRIPLE"
+
+      - name: Build and test staging launcher (Linux musl x86_64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_bundle="$(
+            find "$HOME" -type d -name "${SWIFT_STATIC_LINUX_SDK}.artifactbundle" | head -n1
+          )"
+          if [[ -z "$sdk_bundle" ]]; then
+            echo "Swift SDK artifact bundle not found for the staging launcher." >&2
+            exit 1
+          fi
+          sysroot="$sdk_bundle/$SWIFT_STATIC_LINUX_SDK/swift-linux-musl/musl-1.2.5.sdk/$SWIFT_STATIC_LINUX_SDK_ARCH"
+          launcher="$RUNNER_TEMP/CodexBarStagingLauncher-linux-musl-x86_64"
+          bash Scripts/build_linux_staging_launcher.sh x86_64 "$launcher" "$sysroot"
+          bash TestsLinux/StagingLauncher/test.sh
 
   build-linux-cli:
     timeout-minutes: 20

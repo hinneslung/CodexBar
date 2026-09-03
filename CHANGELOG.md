@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Windows
+- Added a Windows notification-area popup with Overview and provider details, a compact dark
+  DPI-aware layout, provider logos, used/left display mode, reset details in Overview, a compact
+  multi-provider usage/reset hover tooltip, and last-successful-reading fallback.
+- Added the complete upstream provider catalog with enable/order controls and Automatic or explicit
+  WSL-distribution selection, without provider-specific executable paths.
+- Kept the upstream Linux `codexbar` CLI as the provider engine and added a declarative, in-memory
+  bridge for compatible OpenCode credentials from the selected WSL user's `auth.json`.
+- Added Windows CI coverage plus warnings-as-errors GUI builds and portability tests.
+- Fixed OpenCode Go percentage normalization and zero-percent rolling responses.
+- Fixed Windows tray-click toggling, remaining-mode meter direction, clipped overview percentages, and
+  refined Settings navigation, provider branding, ordering controls, section separation, and explicit
+  `left` labels for balance-only providers.
+- Auto-detected the canonical CodexBar CLI in registered WSL distributions and suppressed console
+  windows for every WSL child process.
+- Fixed source changes racing an older refresh, and simplified provider settings to show only
+  post-Apply errors while hiding Apply when nothing changed.
+- Routed every Windows provider through the same unchanged canonical CodexBar CLI runtime with
+  per-invocation, scoped credential projection for CLI-owned accounts.
+- Added x64 and ARM64 Windows release archives with app-local Swift and Microsoft runtime libraries,
+  PE/subsystem validation, native smoke starts, verified checksums, and same-commit static Linux CLI
+  payloads.
+- Added a validated app-private WSL CLI fallback, so release users do not need to install `codexbar`
+  manually; existing user-installed WSL CLIs remain preferred.
+
 ## 0.54.1 — 2026-08-21
 
 ### Highlights

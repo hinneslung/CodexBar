@@ -109,7 +109,12 @@ def swift_test_list(swift_command: list[str]) -> list[TestSelection]:
         raise
     selections: set[TestSelection] = set()
     unknown: list[str] = []
-    for line in result.stdout.splitlines():
+    for raw_line in result.stdout.splitlines():
+        # Native Windows SwiftPM currently emits CRCRLF between listed tests. `splitlines()`
+        # preserves those as empty records, so ignore whitespace-only transport artifacts.
+        line = raw_line.strip()
+        if not line:
+            continue
         top_level = re.fullmatch(r"(?P<module>[^.]+)\.(?:`(?P<display>.+)`|(?P<function>[^()/]+))\(\)", line)
         if top_level is not None:
             module = top_level.group("module")

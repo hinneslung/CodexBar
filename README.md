@@ -11,7 +11,12 @@
 
 <a href="https://codexbar.app"><img src="docs/social.png" alt="CodexBar — every AI coding limit in your menu bar. 69 providers." width="100%" /></a>
 
-Tiny macOS 14+ menu bar app that keeps **AI coding-provider limits visible** and shows when each window resets. Codex, OpenAI, Claude, Cursor, Gemini, Copilot, Grok, GroqCloud, ElevenLabs, Deepgram, z.ai, MiniMax, Kiro, Zed, Vertex AI, Augment, OpenRouter, LiteLLM, LLM Proxy, Codebuff, Command Code, ClinePass, AWS Bedrock, and many newer coding providers. One status item per provider, or Merge Icons mode with a provider switcher. No Dock icon, minimal UI, dynamic bar icons.
+Native macOS 14+ menu-bar and Windows 10/11 notification-area app that keeps **AI coding-provider
+limits visible** and shows when each window resets. Codex, OpenAI, Claude, Cursor, Gemini, Copilot,
+Grok, GroqCloud, ElevenLabs, Deepgram, z.ai, MiniMax, Kiro, Zed, Vertex AI, Augment, OpenRouter,
+LiteLLM, LLM Proxy, Codebuff, Command Code, ClinePass, AWS Bedrock, and many newer coding providers.
+The macOS app supports one status item per provider or Merge Icons mode; Windows uses a compact tray
+popup with Overview and provider detail views.
 
 <img src="docs/codexbar.png" alt="CodexBar menu popover with provider tiles, usage bars, and reset countdowns" width="520" />
 
@@ -26,9 +31,15 @@ Tiny macOS 14+ menu bar app that keeps **AI coding-provider limits visible** and
 
 ### Requirements
 - macOS 14+ (Sonoma)
+- Windows 10/11 x64 or ARM64 with WSL2 and a non-root default WSL user
 
 ### GitHub Releases
 Download: <https://github.com/steipete/CodexBar/releases>
+
+Windows archives are `CodexBar-v<tag>-windows-x86_64.zip` and
+`CodexBar-v<tag>-windows-arm64.zip`. Extract the whole folder and start `CodexBar.exe`. The matching
+Linux CLI is included and installed into CodexBar's private WSL data directory automatically when no
+user-installed WSL `codexbar` is available.
 
 ### Homebrew
 ```bash
