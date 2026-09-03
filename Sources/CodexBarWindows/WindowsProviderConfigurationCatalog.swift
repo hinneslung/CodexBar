@@ -156,8 +156,62 @@ struct WindowsUnavailableProviderInfo: Sendable, Equatable {
 /// Declarative Windows-owned manual credential catalog. It mirrors only configuration fields and
 /// source routes already consumed by the unchanged bundled Linux CLI.
 enum WindowsProviderConfigurationCatalog {
-  static let automaticCredentialDescription =
-    "Uses existing provider sign-ins and OpenCode credentials automatically."
+  enum ProviderSignInEvidence: Sendable, Equatable {
+    case providerCLI
+    case providerOwnedAuthenticationState
+  }
+
+  /// Providers whose upstream descriptor has a reviewed non-manual route through the provider's
+  /// CLI or provider-owned authentication state. Automatic selection alone is not evidence.
+  static let providerSignInEvidence: [WindowsProviderID: ProviderSignInEvidence] = [
+    .amp: .providerCLI,
+    .antigravity: .providerCLI,
+    .augment: .providerCLI,
+    .bedrock: .providerOwnedAuthenticationState,
+    .claude: .providerCLI,
+    .codebuff: .providerOwnedAuthenticationState,
+    .codex: .providerCLI,
+    .doubao: .providerCLI,
+    .gemini: .providerOwnedAuthenticationState,
+    .grok: .providerCLI,
+    .jetBrains: .providerOwnedAuthenticationState,
+    .kilo: .providerCLI,
+    .kimi: .providerOwnedAuthenticationState,
+    .kiro: .providerCLI,
+    .vertexAI: .providerOwnedAuthenticationState,
+  ]
+
+  static var providerSignInProviderIDs: Set<WindowsProviderID> {
+    Set(self.providerSignInEvidence.keys)
+  }
+
+  static func automaticCredentialDescription(provider: WindowsProviderID) -> String {
+    let providerSignIn = self.providerSignInProviderIDs.contains(provider)
+    let supportsOpenCode = WindowsProviderCredentialBridge.supports(provider)
+    var sentences: [String] =
+      switch (providerSignIn, supportsOpenCode) {
+      case (true, true):
+        [
+          "Automatically uses its OpenCode CLI connection.",
+          "Otherwise, uses credentials from the provider's app or CLI.",
+        ]
+      case (true, false):
+        ["Automatically uses credentials from the provider's app or CLI."]
+      case (false, true):
+        [
+          "Automatically uses its OpenCode CLI connection.",
+          "Otherwise, uses CodexBar CLI credentials.",
+        ]
+      case (false, false):
+        ["Automatically uses CodexBar CLI credentials."]
+      }
+
+    let hasManualCredential = self.byProvider[provider]?.manualCredentialSets.isEmpty == false
+    if hasManualCredential {
+      sentences.append("Select a manual option if Automatic fails.")
+    }
+    return sentences.joined(separator: " ")
+  }
 
   /// API routes whose staged `apiKey` was proven to be consumed by the unchanged release CLI.
   static let manualAPIProviderIDs: Set<WindowsProviderID> = [
