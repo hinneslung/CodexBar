@@ -290,7 +290,8 @@ final class WindowsAppConfigurationTests: XCTestCase {
       """.utf8)
     let decoded = try JSONDecoder().decode(WindowsProviderConfiguration.self, from: attemptedSecret)
     let encoded = try JSONEncoder().encode(decoded)
-    XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains(marker))
+    let encodedText = try XCTUnwrap(String(bytes: encoded, encoding: .utf8))
+    XCTAssertFalse(encodedText.contains(marker))
     XCTAssertEqual(decoded.companionValues, ["enterpriseHost": "https://resource.example.test"])
   }
 }

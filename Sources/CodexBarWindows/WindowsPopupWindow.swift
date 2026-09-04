@@ -1,6 +1,8 @@
 import Foundation
 import WinSDK
 
+// swiftlint:disable file_length
+
 private let codexBarPopupClassName = "CodexBarPopupWindow"
 private let windowsSecureRichEditAvailable: Bool = WindowsWideString.withPointer("Msftedit.dll") {
   LoadLibraryW($0) != nil
@@ -19,6 +21,7 @@ private func codexBarPopupWindowProcedure(
     lParam: lParam) ?? DefWindowProcW(window, message, wParam, lParam)
 }
 
+// swiftlint:disable:next type_body_length
 final class WindowsPopupWindow {
   private enum Metrics {
     static let width: Int32 = 360
@@ -281,6 +284,7 @@ final class WindowsPopupWindow {
     _ = InvalidateRect(self.window, nil, false)
   }
 
+  // swiftlint:disable:next function_parameter_count
   func completeProviderConfigurationTask(
     requestID: Foundation.UUID,
     provider: WindowsProviderID,
@@ -325,6 +329,7 @@ final class WindowsPopupWindow {
     _ = InvalidateRect(self.window, nil, false)
   }
 
+  // swiftlint:disable:next cyclomatic_complexity function_body_length
   func handleMessage(
     window: HWND?,
     message: UINT,
@@ -837,6 +842,7 @@ final class WindowsPopupWindow {
     self.drawFooter(dc: dc, client: client, backAction: .back)
   }
 
+  // swiftlint:disable:next function_body_length
   private func drawSettings(dc: HDC?, client: RECT) {
     let contentState = self.beginContentClip(dc: dc, client: client)
     let inset = self.scaled(Metrics.horizontalInset)
@@ -1086,6 +1092,7 @@ final class WindowsPopupWindow {
     self.drawFooter(dc: dc, client: client, backAction: .back)
   }
 
+  // swiftlint:disable:next function_parameter_count
   private func drawGlobalToggle(
     dc: HDC?,
     client: RECT,
@@ -1190,6 +1197,7 @@ final class WindowsPopupWindow {
       format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE))
   }
 
+  // swiftlint:disable:next function_body_length
   private func drawProviderConfiguration(dc: HDC?, client: RECT, provider: WindowsProviderID) {
     guard let configuration = self.configuration.providers.first(where: { $0.id == provider })
     else {
@@ -2360,6 +2368,7 @@ final class WindowsPopupWindow {
       format: UINT(DT_CENTER | DT_VCENTER | DT_SINGLELINE))
   }
 
+  // swiftlint:disable:next cyclomatic_complexity
   private func activate(at point: POINT) {
     guard
       let target = self.hitTargets.reversed().first(where: { Self.contains($0.rect, point: point) })
@@ -2405,6 +2414,7 @@ final class WindowsPopupWindow {
       WindowsTrayApplication.current?.toggleRunAtStartup()
     case .toggleProvider(let provider):
       WindowsTrayApplication.current?.toggleProvider(provider)
+    // swiftlint:disable:next pattern_matching_keywords
     case .moveProvider(let provider, let direction):
       WindowsTrayApplication.current?.moveProvider(provider, direction: direction)
     case .moveProviderToTop(let provider):
@@ -2862,3 +2872,5 @@ final class WindowsPopupWindow {
     point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
   }
 }
+
+// swiftlint:enable file_length

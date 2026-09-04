@@ -140,6 +140,7 @@ struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertib
       executionMode: executionMode)
   }
 
+  // swiftlint:disable:next function_parameter_count
   static func stagedWSL(
     distribution: String,
     launcherPath: String,
@@ -189,6 +190,7 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
   private let processRunner: ProcessRunner
   private let retryDelay: RetryDelay
 
+  // swiftlint:disable closure_parameter_position
   init(
     processRunner: @escaping ProcessRunner = {
       executablePath, arguments, timeout, maximumOutputBytes,
@@ -208,6 +210,7 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
     self.processRunner = processRunner
     self.retryDelay = retryDelay
   }
+  // swiftlint:enable closure_parameter_position
 
   func fetch(
     provider: WindowsProviderID,
@@ -522,8 +525,10 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
   }
 
   static func discoveredExecutablePath(_ data: Data) -> String? {
+    // swiftlint:disable:next optional_data_string_conversion
+    let decoded = String(decoding: data, as: UTF8.self)
     let value =
-      String(decoding: data, as: UTF8.self)
+      decoded
       .components(separatedBy: .newlines).first?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     guard value.hasPrefix("/"), value.count <= 4096,
@@ -534,8 +539,10 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
   }
 
   static func discoveredLinuxHome(_ data: Data) -> String? {
+    // swiftlint:disable:next optional_data_string_conversion
+    let decoded = String(decoding: data, as: UTF8.self)
     let value =
-      String(decoding: data, as: UTF8.self)
+      decoded
       .components(separatedBy: .newlines).first?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     guard value.hasPrefix("/"), value.count <= 4096,

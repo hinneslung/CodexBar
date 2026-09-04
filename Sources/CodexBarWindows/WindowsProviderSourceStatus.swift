@@ -15,6 +15,7 @@ enum WindowsProviderConfigurationPageState {
     self.sourceKey(draft) != self.sourceKey(saved)
   }
 
+  // swiftlint:disable:next function_parameter_count
   static func errorText(
     provider: WindowsProviderID,
     lastAppliedProvider: WindowsProviderID?,

@@ -84,7 +84,8 @@
     func automaticCredentialGuidance() {
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .kimi)
-          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials from its app or CLI or existing CodexBar CLI configuration. "
+          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses "
+          + "credentials from its app or CLI or existing CodexBar CLI configuration. "
           + "Select a manual option if Automatic fails."
       )
       #expect(
@@ -97,11 +98,13 @@
       )
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .openCodeGo)
-          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI. "
+          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses "
+          + "credentials already configured in CodexBar CLI. "
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .clinePass)
-          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI. "
+          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses "
+          + "credentials already configured in CodexBar CLI. "
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .deepgram)
@@ -209,22 +212,22 @@
           == cliProviders.union(providerStateProviders).union(localSourceProviders))
       #expect(
         Set(
-          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence.compactMap {
-            provider, evidence in
-            evidence == .providerCLI ? provider : nil
-          }) == cliProviders)
+          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence
+            .compactMap { provider, evidence in
+              evidence == .providerCLI ? provider : nil
+            }) == cliProviders)
       #expect(
         Set(
-          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence.compactMap {
-            provider, evidence in
-            evidence == .providerOwnedAuthenticationState ? provider : nil
-          }) == providerStateProviders)
+          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence
+            .compactMap { provider, evidence in
+              evidence == .providerOwnedAuthenticationState ? provider : nil
+            }) == providerStateProviders)
       #expect(
         Set(
-          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence.compactMap {
-            provider, evidence in
-            evidence == .providerOwnedLocalSource ? provider : nil
-          }) == localSourceProviders)
+          WindowsProviderConfigurationCatalog.providerAppOrCLIEvidence
+            .compactMap { provider, evidence in
+              evidence == .providerOwnedLocalSource ? provider : nil
+            }) == localSourceProviders)
 
       let descriptorPaths: [WindowsProviderID: String] = [
         .amp: "Amp/AmpProviderDescriptor.swift",

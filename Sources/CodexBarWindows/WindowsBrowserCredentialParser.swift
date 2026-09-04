@@ -87,6 +87,7 @@ enum WindowsBrowserCredentialParser {
         return Self.validateCookieInput(value, policy: policy, acceptsCURL: false)
       }
       return Self.validateFullRequest(value, policy: policy)
+    // swiftlint:disable:next pattern_matching_keywords
     case .opaqueSession(let defaultCookieName, let recognizedCookieNames):
       return Self.validateOpaqueSession(
         value,
@@ -272,6 +273,7 @@ enum WindowsBrowserCredentialParser {
     case failure(String)
   }
 
+  // swiftlint:disable:next cyclomatic_complexity
   private static func parseCURL(_ raw: String) -> ParseResult {
     guard let tokens = curlTokens(raw), !tokens.isEmpty,
       tokens[0].caseInsensitiveCompare("curl") == .orderedSame
@@ -349,6 +351,7 @@ enum WindowsBrowserCredentialParser {
     return .success(CURLCapture(url: url, cookieHeader: cookie, headers: headers))
   }
 
+  // swiftlint:disable:next cyclomatic_complexity
   private static func curlTokens(_ raw: String) -> [String]? {
     enum Quote { case none, single, double, ansi }
     var quote = Quote.none

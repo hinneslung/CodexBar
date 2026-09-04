@@ -169,7 +169,7 @@
         providers: [.githubCopilot])
 
       #expect(presentation.trayTooltip(showUsed: true) == "Copilot - 51%")
-      #expect(presentation.rows[0].governingWindow?.overviewResetText == "")
+      #expect(presentation.rows[0].governingWindow?.overviewResetText.isEmpty == true)
     }
 
     @Test

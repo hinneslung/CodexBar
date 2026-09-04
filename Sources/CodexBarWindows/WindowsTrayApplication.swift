@@ -263,6 +263,7 @@ final class WindowsTrayApplication {
     }
     guard registered else { return false }
 
+    // swiftlint:disable closure_parameter_position
     self.messageWindow = WindowsWideString.withPointer(codexBarMessageWindowClassName) {
       className in
       WindowsWideString.withPointer("CodexBar") { title in
@@ -281,6 +282,7 @@ final class WindowsTrayApplication {
           nil)
       }
     }
+    // swiftlint:enable closure_parameter_position
     return self.messageWindow != nil
   }
 
@@ -436,6 +438,7 @@ final class WindowsTrayApplication {
       Self.refreshCompletionTimerID,
       Self.refreshCompletionPollMilliseconds,
       nil)
+    // swiftlint:disable closure_parameter_position
     self.refreshTask = Task.detached(priority: .utility) {
       @Sendable [dataSource, resultStore, window] in
       let snapshots = await dataSource.fetchProviderSnapshots()
@@ -450,6 +453,7 @@ final class WindowsTrayApplication {
         0,
         0)
     }
+    // swiftlint:enable closure_parameter_position
   }
 
   @discardableResult

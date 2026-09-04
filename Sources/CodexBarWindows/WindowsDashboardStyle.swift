@@ -151,6 +151,7 @@ enum WindowsDashboardDrawing {
     if let oldPen { _ = SelectObject(dc, oldPen) }
   }
 
+  // swiftlint:disable:next function_parameter_count
   static func text(
     _ value: String,
     dc: HDC?,
