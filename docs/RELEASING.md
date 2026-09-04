@@ -85,11 +85,16 @@ must be updated via `brew`.
 
 After publishing the GitHub release, `.github/workflows/release-cli.yml` builds the macOS, glibc
 Linux, and static musl Linux CLI tarballs for arm64 and x86_64. It then builds native Windows x86_64
-and ARM64 archives with the matching musl CLI payload, verified input checksums, app-local Swift and
-Microsoft runtime DLLs, output checksums, PE validation, and extracted-app smoke starts. The workflow uploads those assets and dispatches the
-Homebrew tap update for both the CLI formula and app cask. Homebrew continues to use the glibc Linux
-assets. If the final dispatch is rate-limited, the release assets may still be present; rerun or
-manually update the tap formula/cask from the published assets.
+and ARM64 archives on matching native runners. Each Windows matrix cell reruns the portability tests
+with warnings treated as errors before the release build, pairs the app with the matching static-musl
+WSL CLI and staging launcher, verifies input checksums, binary architectures, GUI subsystem, exact
+archive layout, app-local Swift and Microsoft runtime DLLs, and output checksums, then smoke-starts the
+fully extracted archive on that native runner. A local AMD64 cross-build is not ARM64 runtime evidence.
+The Windows archives remain unsigned until a separate Windows signing identity is configured. The
+workflow uploads those assets and dispatches the Homebrew tap update for both the CLI formula and app
+cask. Homebrew continues to use the glibc Linux assets. If the final dispatch is rate-limited, the
+release assets may still be present; rerun or manually update the tap formula/cask from the published
+assets.
 
 ## Checklist (quick)
 - [ ] Read both this file and `~/Projects/agent-scripts/docs/RELEASING-MAC.md`; resolve any conflicts toward CodexBar’s specifics.
