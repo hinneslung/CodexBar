@@ -193,6 +193,9 @@ run_invocation() {
   if [[ "$provider" == groq && "$source" == api ]]; then
     environment_command+=("GROQ_API_URL=http://127.0.0.1:9")
   fi
+  if [[ "$provider" == mimo && "$source" == web ]]; then
+    environment_command+=("MIMO_API_URL=http://127.0.0.1:9")
+  fi
   local -a environment=()
   if [[ -n "$credential_environment" ]]; then
     environment+=("$credential_environment=$canary")
