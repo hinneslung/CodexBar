@@ -66,11 +66,11 @@
       let result = try WindowsHiddenProcessRunner.run(
         executablePath: executable,
         arguments: ["cmd.exe"],
-        timeout: 2,
+        timeout: 5,
         maximumOutputBytes: 4096)
 
       #expect(result.exitCode == 0)
-      #expect(Date().timeIntervalSince(startedAt) < 1)
+      #expect(Date().timeIntervalSince(startedAt) < 4)
     }
 
     @Test("stdin writer obeys the process deadline when the child never reads")

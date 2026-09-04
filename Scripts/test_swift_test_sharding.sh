@@ -205,7 +205,7 @@ diff -u "${TEMP_DIR}/shards-expected.log" "${TEMP_DIR}/shards-combined.log"
 reset_case windows-list
 export FAKE_SWIFT_MODE=windows_list
 run_harness --group-size 4 --timeout 10 --list-only > "${TEMP_DIR}/windows-list.log"
-grep -Fq "Discovered 10 selections in 3 groups." "${TEMP_DIR}/windows-list.log"
+grep -Fq "Discovered 10 test selections; running 10 selections in 3 groups" "${TEMP_DIR}/windows-list.log"
 
 reset_case group-timeout
 export FAKE_SWIFT_MODE=group_timeout
