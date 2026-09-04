@@ -190,6 +190,9 @@ run_invocation() {
   # FoundationNetworking clients otherwise wait through their full provider
   # deadline after the namespace rejects DNS, which makes an offline gate flaky.
   environment_command+=("RES_OPTIONS=attempts:1 timeout:1")
+  if [[ "$provider" == groq && "$source" == api ]]; then
+    environment_command+=("GROQ_API_URL=http://127.0.0.1:9")
+  fi
   local -a environment=()
   if [[ -n "$credential_environment" ]]; then
     environment+=("$credential_environment=$canary")
