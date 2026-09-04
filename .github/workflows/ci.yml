@@ -6,6 +6,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -209,6 +212,71 @@ jobs:
             printf '| Runs lint-macos | `%s` |\n' "$RUNS_LINT_MACOS"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  swift-test-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset-arch: x86_64
+            runs-on: windows-2025
+            build-arch: amd64
+            runner-architecture: AMD64
+            target-triple: x86_64-unknown-windows-msvc
+            pe-machine: IMAGE_FILE_MACHINE_AMD64
+          - asset-arch: arm64
+            runs-on: windows-11-vs2026-arm
+            build-arch: arm64
+            runner-architecture: ARM64
+            target-triple: aarch64-unknown-windows-msvc
+            pe-machine: IMAGE_FILE_MACHINE_ARM64
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Swift ${{ env.SWIFT_VERSION }}
+        uses: compnerd/gha-setup-swift@eeda069c5bc95ac8a9ac5cea7d4f588ae5420ca5
+        with:
+          swift-version: swift-6.3.3-release
+          swift-build: 6.3.3-RELEASE
+          build_arch: ${{ matrix.build-arch }}
+
+      - name: Verify native Windows toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          swift --version
+          swift package --version
+          if ($env:PROCESSOR_ARCHITECTURE -ne '${{ matrix.runner-architecture }}') {
+            throw "Runner architecture is $env:PROCESSOR_ARCHITECTURE; expected ${{ matrix.runner-architecture }}."
+          }
+          $targetInfo = swiftc -print-target-info | ConvertFrom-Json
+          $actualTarget = $targetInfo.target.triple
+          if ($actualTarget -ne '${{ matrix.target-triple }}') {
+            throw "Swift target triple is $actualTarget; expected ${{ matrix.target-triple }}."
+          }
+
+      - name: Build notification-area app
+        shell: pwsh
+        run: swift build --product CodexBar -Xswiftc -warnings-as-errors
+
+      - name: Windows portability tests
+        shell: pwsh
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Verify native Windows GUI executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = (swift build --product CodexBar --show-bin-path).Trim()
+          $headers = llvm-readobj --file-headers (Join-Path $bin 'CodexBar.exe')
+          if (-not ($headers -match '${{ matrix.pe-machine }}')) {
+            throw 'CodexBar.exe does not match the native runner architecture.'
+          }
+          if (-not ($headers -match 'IMAGE_SUBSYSTEM_WINDOWS_GUI')) {
+            throw 'CodexBar.exe is not a Windows GUI executable.'
+          }
+
   lint-build-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -216,6 +284,7 @@ jobs:
       - changes
       - lint
       - swift-test-macos
+      - swift-test-windows
       - build-linux-musl-cli
       - build-linux-cli
     if: ${{ always() && !cancelled() }}
@@ -232,7 +301,8 @@ jobs:
             "${{ needs.changes.outputs.macos-tests-deferred }}" \
             "${{ needs.changes.outputs.linux-musl-build }}" \
             "${{ needs.build-linux-musl-cli.result }}" \
-            "${{ needs.build-linux-cli.result }}"
+            "${{ needs.build-linux-cli.result }}" \
+            "${{ needs.swift-test-windows.result }}"
 
       - name: Summarize aggregate CI gate
         if: ${{ always() }}
@@ -248,6 +318,7 @@ jobs:
           LINUX_MUSL_BUILD_REASON: ${{ needs.changes.outputs.linux-musl-build-reason }}
           LINUX_MUSL_RESULT: ${{ needs.build-linux-musl-cli.result }}
           LINUX_RESULT: ${{ needs.build-linux-cli.result }}
+          WINDOWS_RESULT: ${{ needs.swift-test-windows.result }}
         run: |
           set -euo pipefail
           reason="${MACOS_TESTS_REASON:-<unset>}"
@@ -268,6 +339,7 @@ jobs:
             printf '| Linux musl gate reason | %s |\n' "$musl_reason"
             printf '| build-linux-musl-cli result | `%s` |\n' "$LINUX_MUSL_RESULT"
             printf '| build-linux-cli matrix result | `%s` |\n' "$LINUX_RESULT"
+            printf '| swift-test-windows result | `%s` |\n' "$WINDOWS_RESULT"
           } >> "$GITHUB_STEP_SUMMARY"
 
   build-linux-musl-cli:
@@ -443,6 +515,22 @@ jobs:
           swift build -c release --product CodexBarCLI
           --swift-sdk "$SWIFT_STATIC_LINUX_SDK"
           --triple "$SWIFT_STATIC_LINUX_SDK_TRIPLE"
+
+      - name: Build and test staging launcher (Linux musl x86_64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_bundle="$(
+            find "$HOME" -type d -name "${SWIFT_STATIC_LINUX_SDK}.artifactbundle" | head -n1
+          )"
+          if [[ -z "$sdk_bundle" ]]; then
+            echo "Swift SDK artifact bundle not found for the staging launcher." >&2
+            exit 1
+          fi
+          sysroot="$sdk_bundle/$SWIFT_STATIC_LINUX_SDK/swift-linux-musl/musl-1.2.5.sdk/$SWIFT_STATIC_LINUX_SDK_ARCH"
+          launcher="$RUNNER_TEMP/CodexBarStagingLauncher-linux-musl-x86_64"
+          bash Scripts/build_linux_staging_launcher.sh x86_64 "$launcher" "$sysroot"
+          bash TestsLinux/StagingLauncher/test.sh
 
   build-linux-cli:
     timeout-minutes: 20

@@ -83,7 +83,18 @@ Uploads not handled automatically—commit/publish appcast + zip to the feed loc
 CodexBar ships a Homebrew **Cask** in `../homebrew-tap`. When installed via Homebrew, CodexBar disables Sparkle and the app
 must be updated via `brew`.
 
-After publishing the GitHub release, `.github/workflows/release-cli.yml` builds the macOS, glibc Linux, and static musl Linux CLI tarballs for arm64 and x86_64, uploads them plus checksums, then dispatches the Homebrew tap update for both the CLI formula and app cask. Homebrew continues to use the glibc Linux assets. If the final dispatch is rate-limited, the tarballs and app zip may still be present; rerun or manually update the tap formula/cask from the published assets.
+After publishing the GitHub release, `.github/workflows/release-cli.yml` builds the macOS, glibc
+Linux, and static musl Linux CLI tarballs for arm64 and x86_64. It then builds native Windows x86_64
+and ARM64 archives on matching native runners. Each Windows matrix cell reruns the portability tests
+with warnings treated as errors before the release build, pairs the app with the matching static-musl
+WSL CLI and staging launcher, verifies input checksums, binary architectures, GUI subsystem, exact
+archive layout, app-local Swift and Microsoft runtime DLLs, and output checksums, then smoke-starts the
+fully extracted archive on that native runner. A local AMD64 cross-build is not ARM64 runtime evidence.
+The Windows archives remain unsigned until a separate Windows signing identity is configured. The
+workflow uploads those assets and dispatches the Homebrew tap update for both the CLI formula and app
+cask. Homebrew continues to use the glibc Linux assets. If the final dispatch is rate-limited, the
+release assets may still be present; rerun or manually update the tap formula/cask from the published
+assets.
 
 ## Checklist (quick)
 - [ ] Read both this file and `~/Projects/agent-scripts/docs/RELEASING-MAC.md`; resolve any conflicts toward CodexBar’s specifics.
@@ -93,12 +104,16 @@ After publishing the GitHub release, `.github/workflows/release-cli.yml` builds 
 - [ ] `./Scripts/sign-and-notarize.sh`
 - [ ] Generate Sparkle appcast via `Scripts/release.sh` or `Scripts/make_appcast.sh`; use `SPARKLE_PRIVATE_KEY_FILE` only if overriding Keychain signing.
   - Upload the dSYM archive alongside the app zip on the GitHub release; the release script now automates this and will fail if it’s missing.
-  - After publishing the release and the Release CLI workflow finishes, run `Scripts/check-release-assets.sh <tag>` to confirm the app zip, dSYM zip, CLI tarballs, and CLI checksums are present on GitHub.
+  - After publishing the release and the Release artifacts workflow finishes, run
+    `Scripts/check-release-assets.sh <tag>` to confirm the macOS app/dSYM, CLI tarballs, Windows
+    archives, and checksums are present on GitHub.
   - Generate the appcast + HTML release notes: `./Scripts/make_appcast.sh CodexBar-macos-universal-<ver>.zip https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml`
   - Beta channel: prefix the command with `SPARKLE_CHANNEL=beta` to tag the entry.
   - Verify the enclosure signature + size: `./Scripts/verify_appcast.sh <ver>`
 - [ ] Publish the tag and GitHub release with the app zip and dSYM, then push the generated `appcast.xml` commit to `main` so the Sparkle feed and enclosure URL are both live (avoid 404s)
-- [ ] Homebrew tap: wait for the Release CLI workflow to update `../homebrew-tap/Casks/codexbar.rb` (app zip url + sha256) and `../homebrew-tap/Formula/codexbar.rb` (CLI tarball urls + sha256), then verify:
+- [ ] Homebrew tap: wait for the Release artifacts workflow to update
+  `../homebrew-tap/Casks/codexbar.rb` (app zip url + sha256) and
+  `../homebrew-tap/Formula/codexbar.rb` (CLI tarball urls + sha256), then verify:
   - `gh run watch <release-cli-run-id> --exit-status`
   - `Scripts/check-release-assets.sh v<version>`
   - `brew uninstall --cask codexbar || true`

@@ -25,12 +25,16 @@ let package = Package(
         .macOS(.v14),
     ],
     products: {
-        var products: [Product] = [
+        var products: [Product] = []
+
+        #if !os(Windows)
+        products.append(contentsOf: [
             .library(name: "CodexBarCore", targets: ["CodexBarCore"]),
             .executable(name: "CodexBarCLI", targets: ["CodexBarCLI"]),
             // Offline adaptive-refresh replay harness. Keep the supporting library package-internal.
             .executable(name: "AdaptiveReplayCLI", targets: ["AdaptiveReplayCLI"]),
-        ]
+        ])
+        #endif
 
         #if os(macOS)
         products.append(contentsOf: [
@@ -39,6 +43,10 @@ let package = Package(
             .executable(name: "CodexBarWidget", targets: ["CodexBarWidget"]),
             .executable(name: "CodexBarClaudeWebProbe", targets: ["CodexBarClaudeWebProbe"]),
         ])
+        #endif
+
+        #if os(Windows)
+        products.append(.executable(name: "CodexBar", targets: ["CodexBarWindows"]))
         #endif
 
         return products
@@ -53,7 +61,10 @@ let package = Package(
         sweetCookieKitDependency,
     ],
     targets: {
-        var targets: [Target] = [
+        var targets: [Target] = []
+
+        #if !os(Windows)
+        targets.append(contentsOf: [
             .target(
                 name: "CQuickJS",
                 path: "Sources/CQuickJS",
@@ -170,11 +181,45 @@ let package = Package(
                     .target(name: "CSQLite3", condition: .when(platforms: [.linux])),
                 ],
                 path: "TestsLinux",
+                exclude: ["StagingLauncher"],
                 swiftSettings: [
                     .enableUpcomingFeature("StrictConcurrency"),
                     .enableExperimentalFeature("SwiftTesting"),
                 ]),
-        ]
+        ])
+        #endif
+
+        #if os(Windows)
+        targets.append(contentsOf: [
+            .executableTarget(
+                name: "CodexBarWindows",
+                dependencies: [],
+                path: "Sources/CodexBarWindows",
+                resources: [
+                    .copy("Resources/CodexBar.ico"),
+                    .copy("Resources/ProviderLogos.bmp"),
+                ],
+                swiftSettings: [
+                    .enableUpcomingFeature("StrictConcurrency"),
+                ],
+                linkerSettings: [
+                    .linkedLibrary("dwmapi"),
+                    .linkedLibrary("uxtheme"),
+                    .unsafeFlags([
+                        "-Xlinker", "/SUBSYSTEM:WINDOWS",
+                        "-Xlinker", "/ENTRY:mainCRTStartup",
+                    ]),
+                ]),
+            .testTarget(
+                name: "CodexBarWindowsPortabilityTests",
+                dependencies: ["CodexBarWindows"],
+                path: "TestsWindows",
+                swiftSettings: [
+                    .enableUpcomingFeature("StrictConcurrency"),
+                    .enableExperimentalFeature("SwiftTesting"),
+                ]),
+        ])
+        #endif
 
         #if os(macOS)
         targets.append(contentsOf: [
