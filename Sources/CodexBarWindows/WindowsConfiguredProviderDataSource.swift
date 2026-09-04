@@ -70,7 +70,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
   private let store: WindowsConfigurationStore?
   private let environment: [String: String]
   private let wslDistributions: [String]
-  private let cliClient = WindowsCanonicalCLIProviderClient()
+  private let cliClient: WindowsCanonicalCLIProviderClient
   private let cliDiscoveryCache: WindowsCanonicalCLIDiscoveryCache
   private let bundledCLIDiscoveryCache: WindowsCanonicalCLIDiscoveryCache
   private let credentialBridge: WindowsProviderCredentialBridge
@@ -89,6 +89,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
             windowsDirectory: windowsDirectory)
         }.value
       }),
+    cliClient: WindowsCanonicalCLIProviderClient = WindowsCanonicalCLIProviderClient(),
     credentialBridge: WindowsProviderCredentialBridge = WindowsProviderCredentialBridge(),
     credentialVault: WindowsProviderCredentialVault? = try? WindowsProviderCredentialVault(),
     credentialRouteResolver: WindowsProviderCredentialRouteResolver? = nil
@@ -98,6 +99,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
     self.wslDistributions = wslDistributions ?? WindowsWSLDistributionRegistry.names()
     self.cliDiscoveryCache = cliDiscoveryCache
     self.bundledCLIDiscoveryCache = bundledCLIDiscoveryCache
+    self.cliClient = cliClient
     self.credentialBridge = credentialBridge
     self.credentialRouteResolver =
       credentialRouteResolver
@@ -268,10 +270,28 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
       }
     }
 
+    let automaticExecutionMode =
+      WindowsProviderConfigurationCatalog.byProvider[provider.id]?.automaticExecutionMode ?? .usage
+    guard
+      let automaticCLI = await Self.resolveAutomaticCLI(
+        resolvedUsageCLI: resolved,
+        executionMode: automaticExecutionMode,
+        bundled: { distribution in
+          await self.bundledCLIDiscoveryCache.executablePath(
+            distribution: distribution,
+            windowsDirectory: windowsDirectory)
+        })
+    else {
+      return Self.unavailable(
+        provider,
+        source: configuredSource,
+        authorityCheck: credentialRoute.check)
+    }
     let invocation = WindowsCanonicalCLIInvocation.wsl(
-      distribution: resolved.distribution,
-      executablePath: resolved.executablePath,
+      distribution: automaticCLI.distribution,
+      executablePath: automaticCLI.executablePath,
       providerID: provider.id.cliName,
+      executionMode: automaticExecutionMode,
       windowsDirectory: windowsDirectory)
     return await self.cliClient.fetch(
       provider: provider.id,
@@ -366,6 +386,18 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
       }
     }
     return nil
+  }
+
+  static func resolveAutomaticCLI(
+    resolvedUsageCLI: ResolvedCLI,
+    executionMode: WindowsCanonicalCLIInvocation.ExecutionMode,
+    bundled: @Sendable (_ distribution: String) async -> String?
+  ) async -> ResolvedCLI? {
+    guard executionMode == .diagnose else { return resolvedUsageCLI }
+    guard let executablePath = await bundled(resolvedUsageCLI.distribution) else { return nil }
+    return ResolvedCLI(
+      distribution: resolvedUsageCLI.distribution,
+      executablePath: executablePath)
   }
 
   static func candidateDistributions(

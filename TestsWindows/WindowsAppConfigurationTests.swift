@@ -37,8 +37,10 @@ final class WindowsAppConfigurationTests: XCTestCase {
     XCTAssertEqual(WindowsProviderCatalog.entries.map(\.displayName), expected.map(\.1))
     XCTAssertEqual(WindowsProviderCatalog.byID.count, expected.count)
     XCTAssertEqual(
-      Set(WindowsProviderID.liveProviders),
-      Set(WindowsProviderCatalog.entries.filter(\.isLiveOnWindows).map(\.id)))
+      Set(WindowsProviderID.supportedProviders),
+      Set(WindowsProviderCatalog.entries.map(\.id))
+        .subtracting(WindowsProviderConfigurationCatalog.unavailableProviderIDs))
+    XCTAssertEqual(WindowsProviderID.supportedProviders.count, 65)
   }
 
   func test_defaultsEnableOnlyCodexAndClaude() {

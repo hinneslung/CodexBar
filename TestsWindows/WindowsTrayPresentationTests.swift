@@ -6,7 +6,7 @@
 
   struct WindowsTrayPresentationTests {
     @Test
-    func `presentation always emits the five dashboard providers in stable order`() {
+    func `presentation defaults to the initially enabled providers`() {
       let presentation = WindowsDashboardPresentation.make(
         snapshots: [
           WindowsProviderSnapshot(
@@ -18,7 +18,7 @@
         ],
         refreshedAt: Date(timeIntervalSince1970: 1_700_000_000))
 
-      #expect(presentation.rows.map(\.provider) == WindowsProviderID.liveProviders)
+      #expect(presentation.rows.map(\.provider) == WindowsProviderID.initiallyEnabledProviders)
       #expect(presentation.rows[1].percentText == "42% used")
       #expect(presentation.rows[0].statusText == "Unavailable")
     }
@@ -87,9 +87,10 @@
             balanceText: "12 credits used",
             updatedAt: Date(timeIntervalSince1970: 1_700_000_000))
         ],
-        refreshedAt: Date(timeIntervalSince1970: 1_700_000_100))
+        refreshedAt: Date(timeIntervalSince1970: 1_700_000_100),
+        providers: [.githubCopilot])
 
-      let row = presentation.rows[3]
+      let row = presentation.rows[0]
       #expect(row.windows.map(\.label) == ["Premium", "Chat"])
       #expect(row.windows.map(\.percentText) == ["20% used", "50% used"])
       #expect(row.planText == "Plan: pro")
@@ -111,9 +112,10 @@
             sourceText: "Environment",
             balanceText: "4321 points remaining")
         ],
-        refreshedAt: Date(timeIntervalSince1970: 1_700_000_000))
+        refreshedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        providers: [.poe])
 
-      let row = presentation.rows[2]
+      let row = presentation.rows[0]
       #expect(row.windows.isEmpty)
       #expect(row.overviewStatusText.isEmpty)
       #expect(!row.overviewStatusText.contains("Environment"))
@@ -149,9 +151,6 @@
         presentation.trayTooltip(showUsed: true, now: now) == """
           Codex - 38% 4d
           Claude - unavailable
-          Poe - unavailable
-          Copilot - unavailable
-          OpenCode Go - unavailable
           """)
       #expect(presentation.trayTooltip(showUsed: false, now: now).hasPrefix("Codex - 62% 4d\n"))
     }
@@ -263,7 +262,8 @@
             availability: .loading,
             sourceText: "WSL Ubuntu credential file"),
         ],
-        refreshedAt: now)
+        refreshedAt: now,
+        providers: [.codex, .claude, .poe, .githubCopilot, .openCodeGo])
 
       #expect(
         presentation.trayTooltip(showUsed: false, now: now) == """

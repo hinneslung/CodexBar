@@ -33,10 +33,10 @@
       #expect(actual == expected)
 
       let expectedManualAPIProviderIDs: Set = [
-        "aiand", "alibaba", "amp", "azureopenai", "chutes", "claude", "codebuff",
-        "clawrouter", "copilot", "crof", "deepgram", "deepinfra", "doubao",
+        "aiand", "alibaba", "amp", "azureopenai", "chutes", "claude", "clinepass", "codebuff",
+        "clawrouter", "copilot", "crof", "deepgram", "deepinfra", "deepseek", "doubao",
         "elevenlabs", "factory", "fireworks", "groq", "ibmbob", "kilo", "kimi", "litellm",
-        "llmproxy", "moonshot", "neuralwatt", "ollama", "openai", "opencodego",
+        "llmproxy", "minimax", "moonshot", "neuralwatt", "ollama", "openai", "opencodego",
         "openrouter", "poe", "sub2api", "synthetic", "venice", "warp", "xai", "zai",
         "zenmux",
       ]
@@ -50,8 +50,7 @@
         })
       #expect(actualManualAPIProviderIDs == expectedManualAPIProviderIDs)
       let disabledManualAPIProviderIDs: Set = [
-        "alibabatokenplan", "clinepass", "commandcode", "cursor", "deepseek",
-        "grok", "minimax", "qoder", "qwencloud", "sakana",
+        "alibabatokenplan", "commandcode", "cursor", "grok", "qoder", "qwencloud", "sakana",
       ]
       #expect(
         Set(
@@ -78,7 +77,7 @@
       #expect(
         try Set(Self.shellArray(named: "expanded_api_providers", in: routeGate)) == [
           "neuralwatt", "elevenlabs", "warp", "clawrouter", "llmproxy", "litellm",
-          "sub2api", "xai",
+          "sub2api", "xai", "clinepass", "deepseek", "minimax",
         ])
       let catalogWebRoutes = Set(
         WindowsProviderConfigurationCatalog.schemas.flatMap { schema in
@@ -124,6 +123,26 @@
       #expect(browser.derivesManualCookieSource)
       #expect(browser.fields.map(\.storage) == [.cookieHeader, .workspaceID])
       #expect(WindowsProviderConfigurationCatalog.byProvider[.codex] == nil)
+
+      let catalogProviders = Set(WindowsProviderCatalog.entries.map(\.id))
+      let supportedProviders = Set(WindowsProviderConfigurationCatalog.schemas.map(\.provider))
+        .union(WindowsProviderConfigurationCatalog.providerAppOrCLIProviderIDs)
+      #expect(catalogProviders.count == 69)
+      #expect(supportedProviders.count == 65)
+      #expect(WindowsProviderConfigurationCatalog.manualAPIProviderIDs.count == 39)
+      #expect(WindowsProviderCredentialBridge.defaultRules.count == 20)
+      #expect(WindowsProviderConfigurationCatalog.providerAppOrCLIProviderIDs.count == 17)
+      #expect(WindowsProviderConfigurationCatalog.unavailableProviderIDs.count == 4)
+
+      let automaticDiagnosticProviders = Set(
+        WindowsProviderConfigurationCatalog.schemas.compactMap { schema in
+          schema.automaticExecutionMode == .diagnose ? schema.provider : nil
+        })
+      #expect(
+        automaticDiagnosticProviders == [
+          .longCat, .manus, .mistral, .notion, .openCode, .perplexity, .stepFun,
+          .t3Chat, .mimo, .zoomMate,
+        ])
     }
 
     @Test

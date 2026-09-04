@@ -75,6 +75,171 @@
       #expect(await recorder.bundledCalls == ["Debian"])
     }
 
+    @Test("automatic diagnose provisions only inside the usage-selected distribution")
+    func resolvesDiagnosticCLIInsideUsageDistribution() async {
+      let usageCLI = WindowsConfiguredProviderDataSource.ResolvedCLI(
+        distribution: "Ubuntu",
+        executablePath: "/usr/local/bin/codexbar")
+      let recorder = AutomaticCLIRecorder()
+
+      let diagnose = await WindowsConfiguredProviderDataSource.resolveAutomaticCLI(
+        resolvedUsageCLI: usageCLI,
+        executionMode: .diagnose,
+        bundled: { distribution in await recorder.bundled(distribution) })
+      let usage = await WindowsConfiguredProviderDataSource.resolveAutomaticCLI(
+        resolvedUsageCLI: usageCLI,
+        executionMode: .usage,
+        bundled: { distribution in await recorder.bundled(distribution) })
+
+      #expect(
+        diagnose
+          == WindowsConfiguredProviderDataSource.ResolvedCLI(
+            distribution: "Ubuntu",
+            executablePath: "/app-owned/Ubuntu/CodexBarCLI"))
+      #expect(usage == usageCLI)
+      #expect(await recorder.calls == ["Ubuntu"])
+    }
+
+    @Test("automatic diagnose fails closed without changing distributions")
+    func diagnosticProvisioningFailureDoesNotFallBack() async {
+      let usageCLI = WindowsConfiguredProviderDataSource.ResolvedCLI(
+        distribution: "Ubuntu",
+        executablePath: "/usr/local/bin/codexbar")
+      let requested = AutomaticCLIRecorder(result: nil)
+      let result = await WindowsConfiguredProviderDataSource.resolveAutomaticCLI(
+        resolvedUsageCLI: usageCLI,
+        executionMode: .diagnose,
+        bundled: { distribution in await requested.bundled(distribution) })
+
+      #expect(result == nil)
+      #expect(await requested.calls == ["Ubuntu"])
+    }
+
+    @Test("automatic diagnose provisions bundled CLI in the ordinary-policy selected distro")
+    func diagnosticProvisioningStaysInSelectedDistribution() async throws {
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "codexbar-diagnostic-distribution-\(Foundation.UUID().uuidString)",
+        isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let store = WindowsConfigurationStore(fileURL: root.appendingPathComponent("config.json"))
+      try store.save(
+        WindowsAppConfiguration(providers: [
+          WindowsProviderConfiguration(id: .longCat, enabled: true, order: 0)
+        ]))
+      let resolution = ResolutionRecorder(
+        existingPath: "/usr/local/bin/codexbar",
+        bundledDistribution: "Ubuntu")
+      let invocation = DataSourceInvocationCapture(output: Self.longCatDiagnosticPayload)
+      let client = WindowsCanonicalCLIProviderClient(
+        processRunner: { executable, arguments, timeout, _, environment, standardInput in
+          invocation.record(
+            executable: executable,
+            arguments: arguments,
+            timeout: timeout,
+            environment: environment,
+            standardInput: standardInput)
+        },
+        retryDelay: {})
+      let dataSource = WindowsConfiguredProviderDataSource(
+        store: store,
+        environment: ["WINDIR": "C:\\Windows"],
+        wslDistributions: ["Debian", "Ubuntu"],
+        cliDiscoveryCache: WindowsCanonicalCLIDiscoveryCache(
+          resolver: { distro, _ in await resolution.existing(distro) }),
+        bundledCLIDiscoveryCache: WindowsCanonicalCLIDiscoveryCache(
+          resolver: { distro, _ in await resolution.bundled(distro) }),
+        cliClient: client,
+        credentialVault: nil)
+
+      let snapshot = try #require(await dataSource.fetchProviderSnapshots().first)
+
+      #expect(snapshot.availability == .available)
+      #expect(snapshot.sourceText == "Ubuntu · Browser session")
+      #expect(await resolution.existingCalls == ["Debian", "Ubuntu"])
+      #expect(await resolution.bundledCalls == ["Ubuntu"])
+      #expect(
+        invocation.arguments == [
+          "-d", "Ubuntu", "--",
+          "/home/example/.local/share/codexbar-windows/0.54.1/CodexBarCLI",
+          "diagnose", "--provider", "longcat", "--format", "json", "--redact",
+        ])
+      #expect(invocation.timeout == 90)
+      #expect(invocation.environment.isEmpty)
+      #expect(invocation.standardInput == nil)
+    }
+
+    @Test("DeepSeek manual token stays in staged account input and remains authoritative")
+    func deepSeekManualTokenIsStdinOnlyAndFailClosed() async throws {
+      let canary = "fictitious-deepseek-data-source-canary"
+      let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "codexbar-deepseek-manual-\(Foundation.UUID().uuidString)",
+        isDirectory: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let store = WindowsConfigurationStore(fileURL: root.appendingPathComponent("config.json"))
+      let vault = WindowsProviderCredentialVault(
+        directoryURL: root.appendingPathComponent("Credentials"))
+      try store.save(
+        WindowsAppConfiguration(providers: [
+          WindowsProviderConfiguration(id: .deepSeek, enabled: true, order: 0)
+        ]))
+      try vault.save(
+        provider: .deepSeek,
+        credentialSetID: "api-key",
+        submittedValues: ["apiKey": canary])
+      let invocation = DataSourceInvocationCapture(
+        output: Data(
+          #"[{"provider":"deepseek","source":"api","usage":null,"credits":null,"error":{"kind":"provider","message":"Offline fixture"}}]"#
+            .utf8))
+      let client = WindowsCanonicalCLIProviderClient(
+        processRunner: { executable, arguments, timeout, _, environment, standardInput in
+          invocation.record(
+            executable: executable,
+            arguments: arguments,
+            timeout: timeout,
+            environment: environment,
+            standardInput: standardInput)
+        },
+        retryDelay: {})
+      let dataSource = WindowsConfiguredProviderDataSource(
+        store: store,
+        environment: ["WINDIR": "C:\\Windows", "WSLENV": "SAFE_VALUE"],
+        wslDistributions: ["Ubuntu"],
+        cliDiscoveryCache: WindowsCanonicalCLIDiscoveryCache(
+          resolver: { _, _ in "/usr/local/bin/codexbar" }),
+        bundledCLIDiscoveryCache: WindowsCanonicalCLIDiscoveryCache(
+          resolver: { _, _ in "/opt/codexbar/CodexBarCLI" }),
+        cliClient: client,
+        credentialBridge: WindowsProviderCredentialBridge(
+          authDataLoader: { _ in
+            Issue.record("Manual authority must not inspect OpenCode credentials")
+            return nil
+          }),
+        credentialVault: vault)
+
+      let snapshot = try #require(await dataSource.fetchProviderSnapshots().first)
+      let standardInput = try #require(invocation.standardInput)
+      let rootPayload = try #require(
+        JSONSerialization.jsonObject(with: standardInput) as? [String: Any])
+      let providerPayload = try #require(
+        (rootPayload["providers"] as? [[String: Any]])?.first)
+      let tokenAccounts = try #require(providerPayload["tokenAccounts"] as? [String: Any])
+      let accounts = try #require(tokenAccounts["accounts"] as? [[String: Any]])
+
+      #expect(snapshot.sourceText == "Ubuntu · API key")
+      #expect(invocation.timeout == 60)
+      #expect(invocation.environment.isEmpty)
+      #expect(!invocation.arguments.contains(where: { $0.contains(canary) }))
+      #expect(providerPayload["apiKey"] == nil)
+      #expect(accounts.count == 1)
+      #expect(accounts.first?["token"] as? String == canary)
+      let stagedText = String(decoding: standardInput, as: UTF8.self)
+      #expect(stagedText.components(separatedBy: canary).count == 2)
+      let windowsConfig = try Data(contentsOf: root.appendingPathComponent("config.json"))
+      #expect(!String(decoding: windowsConfig, as: UTF8.self).contains(canary))
+      #expect(snapshot.safeErrorText?.contains(canary) != true)
+      #expect((try store.load()).providers.first?.id == .deepSeek)
+    }
+
     @Test("five provider fetches run together while output order stays stable")
     func boundsParallelProviderFetchesAndPreservesOrder() async {
       let inputs = Array(0..<7)
@@ -234,6 +399,10 @@
       #expect(committed.value == [.cursor])
     }
 
+    private static let longCatDiagnosticPayload = Data(
+      #"{"schemaVersion":"1.0","timestamp":"2026-09-03T00:00:00Z","platform":"Linux","appVersion":"1.2.3","provider":"longcat","displayName":"LongCat","source":"web","sourceMode":"web","auth":{"configured":true,"modes":["web"]},"usage":{"updatedAt":"2026-09-03T00:00:00Z","dataConfidence":"exact","windows":[{"label":"Session","usedPercent":25,"windowMinutes":300,"resetsAt":null,"hasResetDescription":false,"nextRegenPercent":null,"usageKnown":true}],"extraWindowCount":0,"providerCostPresent":false,"providerSpecificData":[],"detailSections":[]},"fetchAttempts":[{"kind":"web","wasAvailable":true,"errorCategory":null}],"error":null,"settings":{"sourceMode":"web","apiRegion":null},"details":null}"#
+        .utf8)
+
     private actor ResolutionRecorder {
       private let existingPath: String?
       private let bundledDistribution: String
@@ -258,6 +427,20 @@
         return distribution == self.bundledDistribution
           ? "/home/example/.local/share/codexbar-windows/0.54.1/CodexBarCLI"
           : nil
+      }
+    }
+
+    private actor AutomaticCLIRecorder {
+      private let result: String?
+      private(set) var calls: [String] = []
+
+      init(result: String? = "/app-owned/Ubuntu/CodexBarCLI") {
+        self.result = result
+      }
+
+      func bundled(_ distribution: String) -> String? {
+        self.calls.append(distribution)
+        return self.result
       }
     }
 
@@ -360,6 +543,43 @@
 
     func append(_ provider: WindowsProviderID) {
       self.lock.withLock { self.providers.append(provider) }
+    }
+  }
+
+  private final class DataSourceInvocationCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private let output: Data
+    private var storedArguments: [String] = []
+    private var storedTimeout: TimeInterval = 0
+    private var storedEnvironment: [String: String] = [:]
+    private var storedStandardInput: Data?
+
+    init(output: Data) {
+      self.output = output
+    }
+
+    var arguments: [String] { self.lock.withLock { self.storedArguments } }
+    var timeout: TimeInterval { self.lock.withLock { self.storedTimeout } }
+    var environment: [String: String] { self.lock.withLock { self.storedEnvironment } }
+    var standardInput: Data? { self.lock.withLock { self.storedStandardInput } }
+
+    func record(
+      executable _: String,
+      arguments: [String],
+      timeout: TimeInterval,
+      environment: [String: String],
+      standardInput: Data?
+    ) -> WindowsHiddenProcessResult {
+      self.lock.withLock {
+        self.storedArguments = arguments
+        self.storedTimeout = timeout
+        self.storedEnvironment = environment
+        self.storedStandardInput = standardInput
+      }
+      return WindowsHiddenProcessResult(
+        standardOutput: self.output,
+        standardError: Data(),
+        exitCode: 0)
     }
   }
 #endif

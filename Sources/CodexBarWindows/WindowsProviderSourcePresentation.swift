@@ -134,14 +134,20 @@ struct WindowsProviderSourcePresentation: Equatable, Sendable {
     provider: WindowsProviderID?
   ) -> String {
     if let provider,
-      WindowsProviderConfigurationCatalog.providerAppOrCLIProviderIDs.contains(provider),
-      let normalized = Self.normalized(value)?.lowercased(),
-      ["api", "api key", "cli", "provider cli"].contains(normalized)
+      let source = Self.normalized(value)?.lowercased(),
+      let label = Self.automaticSourceLabelOverrides[provider]?[source]
     {
-      return "Provider app/CLI"
+      return label
     }
     return Self.upstreamLabel(value, provider: provider)
   }
+
+  /// Overrides only upstream source tokens whose generic label would misdescribe the credential.
+  /// Provider capability metadata must not replace the source that actually produced a result.
+  private static let automaticSourceLabelOverrides: [WindowsProviderID: [String: String]] = [
+    .bedrock: ["api": "Provider app/CLI"],
+    .wayfinder: ["api": "Provider app/CLI"],
+  ]
 
   private static func canonicalIdentifier(_ value: String) -> String {
     value.unicodeScalars

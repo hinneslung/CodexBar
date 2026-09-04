@@ -6,6 +6,7 @@ enum WindowsProviderCredentialVaultError: LocalizedError, Equatable, Sendable {
   case unsupportedProvider
   case invalidCredentialSet
   case invalidValue(String)
+  case validationRejected(String)
   case protectedDataUnavailable
   case corruptedCredential
   case credentialTooLarge
@@ -22,6 +23,8 @@ enum WindowsProviderCredentialVaultError: LocalizedError, Equatable, Sendable {
       "Select a supported credential method."
     case .invalidValue(let field):
       "Enter a valid value for \(field)."
+    case .validationRejected(let message):
+      message
     case .protectedDataUnavailable:
       "The saved credential cannot be unlocked for this Windows account. Replace or clear it."
     case .corruptedCredential:
@@ -130,6 +133,9 @@ struct WindowsProviderCredentialVault: Sendable {
         let submitted = submittedValues[field.id]
         if let submitted, !submitted.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           guard let normalized = field.normalized(submitted) else {
+            if let message = field.displaySafeValidationMessage(submitted) {
+              throw WindowsProviderCredentialVaultError.validationRejected(message)
+            }
             throw WindowsProviderCredentialVaultError.invalidValue(field.label)
           }
           values[field.id] = normalized
@@ -138,6 +144,9 @@ struct WindowsProviderCredentialVault: Sendable {
         {
           values[field.id] = retained
         } else if field.required {
+          if let message = field.displaySafeValidationMessage(submitted ?? "") {
+            throw WindowsProviderCredentialVaultError.validationRejected(message)
+          }
           throw WindowsProviderCredentialVaultError.invalidValue(field.label)
         }
       }

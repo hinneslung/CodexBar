@@ -85,6 +85,33 @@
       #expect(snapshot.safeErrorText?.contains("raw text") == false)
     }
 
+    @Test("diagnostic failures retain the requested source without exposing failed")
+    func retainsRequestedSourceOnFailure() throws {
+      let payload = Self.payload(
+        usage: "null",
+        error: #"{"category":"auth","safeDescription":"raw text"}"#,
+        source: "failed")
+      let automatic = try WindowsProviderDiagnosticDecoder.decode(
+        data: payload,
+        requestedProvider: .init("manus"),
+        source: .init(
+          distributionLabel: "Ubuntu",
+          kind: .automatic,
+          isResolved: false))
+      let manual = try WindowsProviderDiagnosticDecoder.decode(
+        data: payload,
+        requestedProvider: .init("manus"),
+        source: .init(
+          distributionLabel: "Ubuntu",
+          kind: .manual("Browser session"),
+          isResolved: false))
+
+      #expect(automatic.sourceText == "Ubuntu · Automatic")
+      #expect(!automatic.source.isResolved)
+      #expect(manual.sourceText == "Ubuntu · Browser session")
+      #expect(!manual.source.isResolved)
+    }
+
     @Test("only transient diagnostic categories request a retry")
     func classifiesRetryableDiagnosticErrors() throws {
       for category in ["network", "api"] {

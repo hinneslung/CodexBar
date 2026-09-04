@@ -30,18 +30,15 @@ struct WindowsProviderID: RawRepresentable, Hashable, Codable, Sendable, CustomS
 struct WindowsProviderCatalogEntry: Hashable, Sendable {
   let id: WindowsProviderID
   let displayName: String
-  let isLiveOnWindows: Bool
   let searchAliases: [String]
 
   init(
     id: WindowsProviderID,
     displayName: String,
-    isLiveOnWindows: Bool,
     searchAliases: [String] = []
   ) {
     self.id = id
     self.displayName = displayName
-    self.isLiveOnWindows = isLiveOnWindows
     self.searchAliases = searchAliases
   }
 }
@@ -53,92 +50,87 @@ enum WindowsProviderCatalog {
     .init(
       id: .codex,
       displayName: "Codex",
-      isLiveOnWindows: true,
       searchAliases: ["ChatGPT"]),
-    .init(id: .openai, displayName: "OpenAI", isLiveOnWindows: false),
-    .init(id: .azureOpenAI, displayName: "Azure OpenAI", isLiveOnWindows: false),
-    .init(id: .claude, displayName: "Claude", isLiveOnWindows: true),
-    .init(id: .clinePass, displayName: "ClinePass", isLiveOnWindows: false),
-    .init(id: .cursor, displayName: "Cursor", isLiveOnWindows: false),
-    .init(id: .openCode, displayName: "OpenCode", isLiveOnWindows: false),
-    .init(id: .openCodeGo, displayName: "OpenCode Go", isLiveOnWindows: true),
-    .init(id: .alibaba, displayName: "Alibaba Coding Plan", isLiveOnWindows: false),
-    .init(id: .alibabaTokenPlan, displayName: "Alibaba Token Plan", isLiveOnWindows: false),
-    .init(id: .qwenCloud, displayName: "Qwen Cloud", isLiveOnWindows: false),
+    .init(id: .openai, displayName: "OpenAI"),
+    .init(id: .azureOpenAI, displayName: "Azure OpenAI"),
+    .init(id: .claude, displayName: "Claude"),
+    .init(id: .clinePass, displayName: "ClinePass"),
+    .init(id: .cursor, displayName: "Cursor"),
+    .init(id: .openCode, displayName: "OpenCode"),
+    .init(id: .openCodeGo, displayName: "OpenCode Go"),
+    .init(id: .alibaba, displayName: "Alibaba Coding Plan"),
+    .init(id: .alibabaTokenPlan, displayName: "Alibaba Token Plan"),
+    .init(id: .qwenCloud, displayName: "Qwen Cloud"),
     .init(
       id: .factory,
       displayName: "Droid (Factory)",
-      isLiveOnWindows: false,
       searchAliases: ["Droid", "Factory"]),
-    .init(id: .fireworks, displayName: "Fireworks", isLiveOnWindows: false),
-    .init(id: .gemini, displayName: "Gemini", isLiveOnWindows: false),
-    .init(id: .antigravity, displayName: "Antigravity", isLiveOnWindows: false),
+    .init(id: .fireworks, displayName: "Fireworks"),
+    .init(id: .gemini, displayName: "Gemini"),
+    .init(id: .antigravity, displayName: "Antigravity"),
     .init(
       id: .copilot,
       displayName: "Copilot",
-      isLiveOnWindows: true,
       searchAliases: ["GitHub Copilot"]),
-    .init(id: .devin, displayName: "Devin", isLiveOnWindows: false),
+    .init(id: .devin, displayName: "Devin"),
     .init(
       id: .zai,
       displayName: "z.ai",
-      isLiveOnWindows: false,
       searchAliases: ["Z AI"]),
-    .init(id: .minimax, displayName: "MiniMax", isLiveOnWindows: false),
-    .init(id: .manus, displayName: "Manus", isLiveOnWindows: false),
-    .init(id: .kimi, displayName: "Kimi", isLiveOnWindows: false),
-    .init(id: .kilo, displayName: "Kilo", isLiveOnWindows: false),
-    .init(id: .kiro, displayName: "Kiro", isLiveOnWindows: false),
-    .init(id: .vertexAI, displayName: "Vertex AI", isLiveOnWindows: false),
-    .init(id: .augment, displayName: "Augment", isLiveOnWindows: false),
-    .init(id: .jetBrains, displayName: "JetBrains AI", isLiveOnWindows: false),
-    .init(id: .moonshot, displayName: "Moonshot", isLiveOnWindows: false),
-    .init(id: .amp, displayName: "Amp", isLiveOnWindows: false),
-    .init(id: .t3Chat, displayName: "T3 Chat", isLiveOnWindows: false),
-    .init(id: .ollama, displayName: "Ollama", isLiveOnWindows: false),
-    .init(id: .synthetic, displayName: "Synthetic", isLiveOnWindows: false),
-    .init(id: .openRouter, displayName: "OpenRouter", isLiveOnWindows: false),
-    .init(id: .elevenLabs, displayName: "ElevenLabs", isLiveOnWindows: false),
-    .init(id: .warp, displayName: "Warp", isLiveOnWindows: false),
-    .init(id: .windsurf, displayName: "Windsurf", isLiveOnWindows: false),
-    .init(id: .zed, displayName: "Zed", isLiveOnWindows: false),
-    .init(id: .perplexity, displayName: "Perplexity", isLiveOnWindows: false),
-    .init(id: .mimo, displayName: "Xiaomi MiMo", isLiveOnWindows: false),
-    .init(id: .doubao, displayName: "Doubao", isLiveOnWindows: false),
-    .init(id: .sakana, displayName: "Sakana AI", isLiveOnWindows: false),
-    .init(id: .abacus, displayName: "Abacus AI", isLiveOnWindows: false),
-    .init(id: .mistral, displayName: "Mistral", isLiveOnWindows: false),
-    .init(id: .deepSeek, displayName: "DeepSeek", isLiveOnWindows: false),
-    .init(id: .deepInfra, displayName: "DeepInfra", isLiveOnWindows: false),
-    .init(id: .codebuff, displayName: "Codebuff", isLiveOnWindows: false),
-    .init(id: .crof, displayName: "Crof", isLiveOnWindows: false),
-    .init(id: .venice, displayName: "Venice", isLiveOnWindows: false),
-    .init(id: .commandCode, displayName: "Command Code", isLiveOnWindows: false),
-    .init(id: .qoder, displayName: "Qoder", isLiveOnWindows: false),
-    .init(id: .stepFun, displayName: "StepFun", isLiveOnWindows: false),
-    .init(id: .bedrock, displayName: "AWS Bedrock", isLiveOnWindows: false),
-    .init(id: .grok, displayName: "Grok", isLiveOnWindows: false),
+    .init(id: .minimax, displayName: "MiniMax"),
+    .init(id: .manus, displayName: "Manus"),
+    .init(id: .kimi, displayName: "Kimi"),
+    .init(id: .kilo, displayName: "Kilo"),
+    .init(id: .kiro, displayName: "Kiro"),
+    .init(id: .vertexAI, displayName: "Vertex AI"),
+    .init(id: .augment, displayName: "Augment"),
+    .init(id: .jetBrains, displayName: "JetBrains AI"),
+    .init(id: .moonshot, displayName: "Moonshot"),
+    .init(id: .amp, displayName: "Amp"),
+    .init(id: .t3Chat, displayName: "T3 Chat"),
+    .init(id: .ollama, displayName: "Ollama"),
+    .init(id: .synthetic, displayName: "Synthetic"),
+    .init(id: .openRouter, displayName: "OpenRouter"),
+    .init(id: .elevenLabs, displayName: "ElevenLabs"),
+    .init(id: .warp, displayName: "Warp"),
+    .init(id: .windsurf, displayName: "Windsurf"),
+    .init(id: .zed, displayName: "Zed"),
+    .init(id: .perplexity, displayName: "Perplexity"),
+    .init(id: .mimo, displayName: "Xiaomi MiMo"),
+    .init(id: .doubao, displayName: "Doubao"),
+    .init(id: .sakana, displayName: "Sakana AI"),
+    .init(id: .abacus, displayName: "Abacus AI"),
+    .init(id: .mistral, displayName: "Mistral"),
+    .init(id: .deepSeek, displayName: "DeepSeek"),
+    .init(id: .deepInfra, displayName: "DeepInfra"),
+    .init(id: .codebuff, displayName: "Codebuff"),
+    .init(id: .crof, displayName: "Crof"),
+    .init(id: .venice, displayName: "Venice"),
+    .init(id: .commandCode, displayName: "Command Code"),
+    .init(id: .qoder, displayName: "Qoder"),
+    .init(id: .stepFun, displayName: "StepFun"),
+    .init(id: .bedrock, displayName: "AWS Bedrock"),
+    .init(id: .grok, displayName: "Grok"),
     .init(
       id: .groq,
       displayName: "GroqCloud",
-      isLiveOnWindows: false,
       searchAliases: ["Groq"]),
-    .init(id: .llmProxy, displayName: "LLM Proxy", isLiveOnWindows: false),
-    .init(id: .liteLLM, displayName: "LiteLLM", isLiveOnWindows: false),
-    .init(id: .deepgram, displayName: "Deepgram", isLiveOnWindows: false),
-    .init(id: .poe, displayName: "Poe", isLiveOnWindows: true),
-    .init(id: .chutes, displayName: "Chutes", isLiveOnWindows: false),
-    .init(id: .neuralwatt, displayName: "Neuralwatt", isLiveOnWindows: false),
-    .init(id: .clawRouter, displayName: "ClawRouter", isLiveOnWindows: false),
-    .init(id: .longCat, displayName: "LongCat", isLiveOnWindows: false),
-    .init(id: .sub2API, displayName: "Sub2API", isLiveOnWindows: false),
-    .init(id: .wayfinder, displayName: "Wayfinder", isLiveOnWindows: false),
-    .init(id: .zenMux, displayName: "ZenMux", isLiveOnWindows: false),
-    .init(id: .aiAnd, displayName: "ai&", isLiveOnWindows: false),
-    .init(id: .zoomMate, displayName: "ZoomMate", isLiveOnWindows: false),
-    .init(id: .xAI, displayName: "xAI", isLiveOnWindows: false),
-    .init(id: .notion, displayName: "Notion AI", isLiveOnWindows: false),
-    .init(id: .ibmBob, displayName: "IBM Bob", isLiveOnWindows: false),
+    .init(id: .llmProxy, displayName: "LLM Proxy"),
+    .init(id: .liteLLM, displayName: "LiteLLM"),
+    .init(id: .deepgram, displayName: "Deepgram"),
+    .init(id: .poe, displayName: "Poe"),
+    .init(id: .chutes, displayName: "Chutes"),
+    .init(id: .neuralwatt, displayName: "Neuralwatt"),
+    .init(id: .clawRouter, displayName: "ClawRouter"),
+    .init(id: .longCat, displayName: "LongCat"),
+    .init(id: .sub2API, displayName: "Sub2API"),
+    .init(id: .wayfinder, displayName: "Wayfinder"),
+    .init(id: .zenMux, displayName: "ZenMux"),
+    .init(id: .aiAnd, displayName: "ai&"),
+    .init(id: .zoomMate, displayName: "ZoomMate"),
+    .init(id: .xAI, displayName: "xAI"),
+    .init(id: .notion, displayName: "Notion AI"),
+    .init(id: .ibmBob, displayName: "IBM Bob"),
   ]
 
   static let byID: [WindowsProviderID: WindowsProviderCatalogEntry] =
@@ -193,9 +185,11 @@ extension WindowsProviderID {
     [.codex, .claude]
   }
 
-  /// Providers with a working Windows data path. Availability is independent from first-run policy.
-  static var liveProviders: [Self] {
-    [.codex, .claude, .poe, .copilot, .openCodeGo]
+  /// Providers with a working Windows data path, derived from the explicit unavailable set.
+  static var supportedProviders: [Self] {
+    WindowsProviderCatalog.entries.map(\.id).filter {
+      !WindowsProviderConfigurationCatalog.unavailableProviderIDs.contains($0)
+    }
   }
 
   var displayName: String {

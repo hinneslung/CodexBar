@@ -4,7 +4,7 @@ import Foundation
 struct WindowsUnavailableProviderAdapter: WindowsProviderDataSource {
   func fetchProviderSnapshots() async -> [WindowsProviderSnapshot] {
     try? await Task.sleep(for: .milliseconds(1500))
-    return WindowsProviderID.liveProviders.map { provider in
+    return WindowsProviderID.supportedProviders.map { provider in
       WindowsProviderSnapshot(
         provider: provider,
         availability: .unavailable,
