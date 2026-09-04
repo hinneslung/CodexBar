@@ -221,7 +221,8 @@ enum WindowsProviderConfigurationCatalog {
       switch (providerAppOrCLI, supportsOpenCode) {
       case (true, true):
         [
-          "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials from its app or CLI or existing CodexBar CLI configuration."
+          "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses "
+            + "credentials from its app or CLI or existing CodexBar CLI configuration."
         ]
       case (true, false):
         [
@@ -229,7 +230,8 @@ enum WindowsProviderConfigurationCatalog {
         ]
       case (false, true):
         [
-          "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI."
+          "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses "
+            + "credentials already configured in CodexBar CLI."
         ]
       case (false, false):
         ["Automatically uses credentials already configured in CodexBar CLI."]
@@ -375,7 +377,8 @@ enum WindowsProviderConfigurationCatalog {
     Self.apiSchema(.aiAnd, "aiand"),
     Self.apiSchema(.alibaba, "alibaba-coding-plan"),
     Self.apiSchema(
-      .alibabaTokenPlan, "alibaba-token-plan",
+      .alibabaTokenPlan,
+      "alibaba-token-plan",
       additionalSets: [
         Self.browserSet(
           site: "Model Studio or Bailian",
@@ -383,7 +386,8 @@ enum WindowsProviderConfigurationCatalog {
           companions: [Self.alibabaTokenRegion])
       ]),
     Self.apiSchema(
-      .amp, "amp",
+      .amp,
+      "amp",
       additionalSets: [
         Self.browserSet(
           site: "ampcode.com",
@@ -391,7 +395,8 @@ enum WindowsProviderConfigurationCatalog {
           requiredCookieNames: ["session"])
       ]),
     Self.apiSchema(
-      .azureOpenAI, "azure-openai",
+      .azureOpenAI,
+      "azure-openai",
       companions: [
         .init(
           id: "enterpriseHost",
@@ -419,7 +424,8 @@ enum WindowsProviderConfigurationCatalog {
     Self.apiSchema(.codebuff, "codebuff"),
     Self.apiSchema(.copilot, "copilot"),
     Self.apiSchema(
-      .commandCode, "commandcode",
+      .commandCode,
+      "commandcode",
       additionalSets: [
         Self.browserSet(
           site: "commandcode.ai",
@@ -428,7 +434,8 @@ enum WindowsProviderConfigurationCatalog {
       ]),
     Self.apiSchema(.crof, "crof"),
     Self.apiSchema(
-      .cursor, "cursor",
+      .cursor,
+      "cursor",
       additionalSets: [
         Self.browserSet(
           site: "cursor.com",
@@ -447,7 +454,8 @@ enum WindowsProviderConfigurationCatalog {
     Self.apiSchema(.fireworks, "fireworks"),
     Self.apiSchema(.groq, "groqcloud"),
     Self.apiSchema(
-      .grok, "grok",
+      .grok,
+      "grok",
       additionalSets: [
         Self.browserSet(site: "grok.com", hosts: ["grok.com"])
       ]),
@@ -462,7 +470,8 @@ enum WindowsProviderConfigurationCatalog {
         hosts: ["longcat.chat", "www.longcat.chat"],
         executionMode: .diagnose)),
     Self.apiSchema(
-      .liteLLM, "litellm",
+      .liteLLM,
+      "litellm",
       companions: [
         .init(
           id: "enterpriseHost",
@@ -475,7 +484,8 @@ enum WindowsProviderConfigurationCatalog {
           validation: .privateNetworkHTTPURL)
       ]),
     Self.apiSchema(
-      .llmProxy, "llmproxy",
+      .llmProxy,
+      "llmproxy",
       companions: [
         .init(
           id: "enterpriseHost",
@@ -518,7 +528,8 @@ enum WindowsProviderConfigurationCatalog {
     Self.apiSchema(.moonshot, "moonshot"),
     Self.apiSchema(.neuralwatt, "neuralwatt"),
     Self.apiSchema(
-      .ollama, "ollama",
+      .ollama,
+      "ollama",
       additionalSets: [
         Self.browserSet(
           site: "ollama.com",
@@ -574,10 +585,12 @@ enum WindowsProviderConfigurationCatalog {
         executionMode: .diagnose)),
     Self.apiSchema(.poe, "poe"),
     Self.apiSchema(
-      .qoder, "qoder",
+      .qoder,
+      "qoder",
       additionalSets: [Self.qoderBrowserSet]),
     Self.apiSchema(
-      .qwenCloud, "qwen-cloud",
+      .qwenCloud,
+      "qwen-cloud",
       additionalSets: [
         Self.browserSet(
           site: "home.qwencloud.com",
@@ -608,12 +621,14 @@ enum WindowsProviderConfigurationCatalog {
         ],
         executionMode: .diagnose)),
     Self.apiSchema(
-      .sakana, "sakana",
+      .sakana,
+      "sakana",
       additionalSets: [
         Self.browserSet(site: "console.sakana.ai", hosts: ["console.sakana.ai"])
       ]),
     Self.apiSchema(
-      .sub2API, "sub2api",
+      .sub2API,
+      "sub2api",
       companions: [
         .init(
           id: "enterpriseHost",
@@ -649,7 +664,8 @@ enum WindowsProviderConfigurationCatalog {
         cookieRequired: false,
         executionMode: .diagnose)),
     Self.apiSchema(
-      .xAI, "xai",
+      .xAI,
+      "xai",
       companions: [
         .init(
           id: "workspaceID",
@@ -890,6 +906,7 @@ enum WindowsProviderConfigurationValidator {
     switch validation {
     case .secret, .nonempty:
       return !value.contains(where: \.isNewline)
+    // swiftlint:disable:next pattern_matching_keywords
     case .allowedPrefixes(let prefixes, let minimumSuffixLength, _):
       return !value.contains(where: \.isNewline)
         && prefixes.contains { prefix in

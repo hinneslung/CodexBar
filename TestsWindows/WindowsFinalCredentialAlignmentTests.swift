@@ -26,7 +26,8 @@
           WindowsProviderCapabilityPresentation.summary(provider: provider) == "OpenCode · API key")
         #expect(
           WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: provider)
-            == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI. "
+            == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses "
+            + "credentials already configured in CodexBar CLI. "
             + "Select a manual option if Automatic fails.")
       }
 
@@ -146,7 +147,7 @@
       #expect(provider["apiKey"] == nil)
       #expect(accounts.count == 1)
       #expect(Foundation.UUID(uuidString: try #require(account["id"] as? String)) != nil)
-      #expect(account["label"] as? String == "")
+      #expect((account["label"] as? String)?.isEmpty == true)
       #expect(account["token"] as? String == canary)
       #expect(account["addedAt"] as? Double == 0)
       #expect(account["lastUsed"] is NSNull)
@@ -184,7 +185,28 @@
       #expect(!invocation.debugDescription.contains(canary))
 
       let payload =
-        #"[{"provider":"deepseek","account":"","source":"api","usage":{"primary":{"usedPercent":12,"windowMinutes":300,"resetsAt":null,"resetDescription":null},"secondary":null,"tertiary":null,"extraRateWindows":[],"updatedAt":"2026-09-03T00:00:00Z","identity":null},"credits":null,"error":null}]"#
+        #"""
+        [{
+          "provider":"deepseek",
+          "account":"",
+          "source":"api",
+          "usage":{
+            "primary":{
+              "usedPercent":12,
+              "windowMinutes":300,
+              "resetsAt":null,
+              "resetDescription":null
+            },
+            "secondary":null,
+            "tertiary":null,
+            "extraRateWindows":[],
+            "updatedAt":"2026-09-03T00:00:00Z",
+            "identity":null
+          },
+          "credits":null,
+          "error":null
+        }]
+        """#
       let snapshot = try WindowsCanonicalCLIProviderClient.decode(
         data: Data(payload.utf8),
         requestedProvider: .deepSeek,

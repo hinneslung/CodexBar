@@ -168,7 +168,7 @@
 
       let ciphertext = try Data(
         contentsOf: vault.directoryURL.appendingPathComponent("poe.bin"))
-      #expect(!String(decoding: ciphertext, as: UTF8.self).contains(marker))
+      #expect(ciphertext.range(of: Data(marker.utf8)) == nil)
       #expect(!record.description.contains(marker))
       #expect(
         !FileManager.default.fileExists(atPath: root.appendingPathComponent("config.json").path))
@@ -337,7 +337,7 @@
     func `OpenCode bridge staging contains no projected secret`() throws {
       let canary = "opencode-environment-secret-canary"
       let staged = try WindowsStagedProviderConfig.encodeBridge(provider: .poe)
-      let text = String(decoding: staged, as: UTF8.self)
+      let text = try #require(String(bytes: staged, encoding: .utf8))
       #expect(!text.contains(canary))
       #expect(!text.contains("apiKey"))
       #expect(text.contains("\"source\":\"api\""))

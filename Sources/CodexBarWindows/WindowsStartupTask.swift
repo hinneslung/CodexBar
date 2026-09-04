@@ -120,8 +120,9 @@ enum WindowsStartupTask {
       throw WindowsStartupTaskError.commandFailed
     }
     guard result.exitCode == 0 else { throw WindowsStartupTaskError.commandFailed }
-    return String(decoding: result.standardOutput, as: UTF8.self)
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+    // swiftlint:disable:next optional_data_string_conversion
+    let output = String(decoding: result.standardOutput, as: UTF8.self)
+    return output.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   private static func powershellExecutablePath() throws -> String {

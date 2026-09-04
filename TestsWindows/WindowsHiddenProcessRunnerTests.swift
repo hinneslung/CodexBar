@@ -50,10 +50,9 @@
         maximumOutputBytes: 4096)
       #expect(
         result.exitCode == 0,
-        "stderr: \(String(decoding: result.standardError, as: UTF8.self))")
-      #expect(
-        String(decoding: result.standardOutput, as: UTF8.self)
-          .lowercased().contains("wsl.exe"))
+        "stderr: \(String(bytes: result.standardError, encoding: .utf8) ?? "<non-UTF-8>")")
+      let standardOutput = try #require(String(bytes: result.standardOutput, encoding: .utf8))
+      #expect(standardOutput.lowercased().contains("wsl.exe"))
     }
 
     @Test("parent closes child output handles so readers observe process EOF")
@@ -175,7 +174,8 @@
         maximumOutputBytes: 4096,
         standardInput: Data(secret.utf8))
       #expect(result.exitCode == 0)
-      #expect(String(decoding: result.standardOutput, as: UTF8.self).contains(secret))
+      let standardOutput = try #require(String(bytes: result.standardOutput, encoding: .utf8))
+      #expect(standardOutput.contains(secret))
     }
 
     @Test("anonymous stdin pipe inherits only the child read end")

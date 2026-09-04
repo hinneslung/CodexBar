@@ -239,9 +239,8 @@
         maximumOutputBytes: 16 * 1024)
 
       #expect(result.exitCode == 0)
-      #expect(
-        String(decoding: result.standardOutput, as: UTF8.self) == "CodexBar bundled WSL live test\n"
-      )
+      let standardOutput = try #require(String(bytes: result.standardOutput, encoding: .utf8))
+      #expect(standardOutput == "CodexBar bundled WSL live test\n")
     }
 
     private static func payloadDirectory(

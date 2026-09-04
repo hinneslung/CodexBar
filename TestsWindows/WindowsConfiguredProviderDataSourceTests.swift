@@ -188,8 +188,16 @@
         submittedValues: ["apiKey": canary])
       let invocation = DataSourceInvocationCapture(
         output: Data(
-          #"[{"provider":"deepseek","source":"api","usage":null,"credits":null,"error":{"kind":"provider","message":"Offline fixture"}}]"#
-            .utf8))
+          #"""
+          [{
+            "provider":"deepseek",
+            "source":"api",
+            "usage":null,
+            "credits":null,
+            "error":{"kind":"provider","message":"Offline fixture"}
+          }]
+          """#
+          .utf8))
       let client = WindowsCanonicalCLIProviderClient(
         processRunner: { executable, arguments, timeout, _, environment, standardInput in
           invocation.record(
@@ -232,10 +240,11 @@
       #expect(providerPayload["apiKey"] == nil)
       #expect(accounts.count == 1)
       #expect(accounts.first?["token"] as? String == canary)
-      let stagedText = String(decoding: standardInput, as: UTF8.self)
+      let stagedText = try #require(String(bytes: standardInput, encoding: .utf8))
       #expect(stagedText.components(separatedBy: canary).count == 2)
       let windowsConfig = try Data(contentsOf: root.appendingPathComponent("config.json"))
-      #expect(!String(decoding: windowsConfig, as: UTF8.self).contains(canary))
+      let windowsConfigText = try #require(String(bytes: windowsConfig, encoding: .utf8))
+      #expect(!windowsConfigText.contains(canary))
       #expect(snapshot.safeErrorText?.contains(canary) != true)
       #expect((try store.load()).providers.first?.id == .deepSeek)
     }
@@ -400,8 +409,41 @@
     }
 
     private static let longCatDiagnosticPayload = Data(
-      #"{"schemaVersion":"1.0","timestamp":"2026-09-03T00:00:00Z","platform":"Linux","appVersion":"1.2.3","provider":"longcat","displayName":"LongCat","source":"web","sourceMode":"web","auth":{"configured":true,"modes":["web"]},"usage":{"updatedAt":"2026-09-03T00:00:00Z","dataConfidence":"exact","windows":[{"label":"Session","usedPercent":25,"windowMinutes":300,"resetsAt":null,"hasResetDescription":false,"nextRegenPercent":null,"usageKnown":true}],"extraWindowCount":0,"providerCostPresent":false,"providerSpecificData":[],"detailSections":[]},"fetchAttempts":[{"kind":"web","wasAvailable":true,"errorCategory":null}],"error":null,"settings":{"sourceMode":"web","apiRegion":null},"details":null}"#
-        .utf8)
+      #"""
+      {
+        "schemaVersion":"1.0",
+        "timestamp":"2026-09-03T00:00:00Z",
+        "platform":"Linux",
+        "appVersion":"1.2.3",
+        "provider":"longcat",
+        "displayName":"LongCat",
+        "source":"web",
+        "sourceMode":"web",
+        "auth":{"configured":true,"modes":["web"]},
+        "usage":{
+          "updatedAt":"2026-09-03T00:00:00Z",
+          "dataConfidence":"exact",
+          "windows":[{
+            "label":"Session",
+            "usedPercent":25,
+            "windowMinutes":300,
+            "resetsAt":null,
+            "hasResetDescription":false,
+            "nextRegenPercent":null,
+            "usageKnown":true
+          }],
+          "extraWindowCount":0,
+          "providerCostPresent":false,
+          "providerSpecificData":[],
+          "detailSections":[]
+        },
+        "fetchAttempts":[{"kind":"web","wasAvailable":true,"errorCategory":null}],
+        "error":null,
+        "settings":{"sourceMode":"web","apiRegion":null},
+        "details":null
+      }
+      """#
+      .utf8)
 
     private actor ResolutionRecorder {
       private let existingPath: String?

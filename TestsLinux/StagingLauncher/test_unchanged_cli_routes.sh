@@ -21,6 +21,40 @@ if ! command -v unshare >/dev/null 2>&1; then
   exit 69
 fi
 
+strace_path="$(command -v strace)"
+env_path="$(command -v env)"
+timeout_path="$(command -v timeout)"
+unshare_path="$(command -v unshare)"
+namespace_mode=''
+original_uid="$(id -u)"
+original_gid="$(id -g)"
+if "$unshare_path" --user --map-root-user --net -- true >/dev/null 2>&1; then
+  namespace_mode=user
+elif [[ -x /usr/bin/sudo && -x /usr/bin/unshare && -x /usr/bin/setpriv && -x /usr/bin/id ]]; then
+  sudo_path=/usr/bin/sudo
+  unshare_path=/usr/bin/unshare
+  setpriv_path=/usr/bin/setpriv
+  dropped_uid=''
+  dropped_gid=''
+  if dropped_uid="$(
+    "$sudo_path" -n -- "$unshare_path" --net -- \
+      "$setpriv_path" --reuid="$original_uid" --regid="$original_gid" --clear-groups \
+      --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+      /usr/bin/id -u 2>/dev/null
+  )" && dropped_gid="$(
+    "$sudo_path" -n -- "$unshare_path" --net -- \
+      "$setpriv_path" --reuid="$original_uid" --regid="$original_gid" --clear-groups \
+      --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+      /usr/bin/id -g 2>/dev/null
+  )" && [[ "$dropped_uid" == "$original_uid" && "$dropped_gid" == "$original_gid" ]]; then
+    namespace_mode=sudo-drop
+  fi
+fi
+if [[ -z "$namespace_mode" ]]; then
+  echo "the route gate requires an unprivileged network namespace or passwordless sudo with setpriv" >&2
+  exit 69
+fi
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 canary="codexbar-route-gate-fixture-20260831"
@@ -142,7 +176,7 @@ run_invocation() {
   local stderr="$work/$label.stderr"
 
   local -a environment_command=(
-    env -i
+    "$env_path" -i
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
     "HOME=$work/home"
     "XDG_CONFIG_HOME=$work/config"
@@ -165,10 +199,27 @@ run_invocation() {
   # permanent gate depend on internet timing. Every fixture runs in an unprivileged
   # network namespace: a credential-present route must reach the provider layer,
   # while the missing control must still fail earlier and remain distinguishable.
-  local -a network_namespace=(unshare --user --map-root-user --net)
+  local -a network_namespace
+  case "$namespace_mode" in
+    user)
+      network_namespace=("$unshare_path" --user --map-root-user --net --)
+      ;;
+    sudo-drop)
+      network_namespace=(
+        "$sudo_path" -n -- "$unshare_path" --net --
+        "$setpriv_path" --reuid="$original_uid" --regid="$original_gid" --clear-groups
+        --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs
+      )
+      ;;
+    *)
+      echo "$label has no approved network namespace mode" >&2
+      return 1
+      ;;
+  esac
   set +e
-  printf '%s' "$config" | "${environment_command[@]}" "${environment[@]}" timeout 55 \
-    "${network_namespace[@]}" strace -f -qq -s 65536 \
+  printf '%s' "$config" | "${network_namespace[@]}" \
+    "${environment_command[@]}" "${environment[@]}" "$timeout_path" 55 \
+    "$strace_path" -f -qq -s 65536 \
     -e trace=execve,socket,connect -o "$trace" \
     "$launcher" --timeout-seconds 50 --provider "$provider" --source "$source" --mode "$mode" \
     >"$stdout" 2>"$stderr"
@@ -180,6 +231,13 @@ run_invocation() {
   fi
   if [[ ! -s "$trace" ]]; then
     echo "$label produced no exec trace" >&2
+    if [[ -s "$stderr" ]]; then
+      if grep -Fq "$canary" "$stderr"; then
+        echo "$label stderr contained the credential canary and was withheld" >&2
+      else
+        cat "$stderr" >&2
+      fi
+    fi
     return 1
   fi
   assert_exec_evidence "$label" "$mode" "$trace" "$stdout" "$stderr"
@@ -501,7 +559,8 @@ open_code_bridge_routes=(
   'zai|Z_AI_API_KEY|Z_AI_REGION=global'
 )
 
-export launcher cli work canary
+export launcher cli work canary namespace_mode original_uid original_gid
+export env_path strace_path timeout_path unshare_path sudo_path setpriv_path
 export -f config_for assert_exec_evidence assert_structured_credential_evidence run_invocation run_route
 if [[ "${CODEXBAR_ROUTE_GATE_WEB_ONLY:-0}" != 1 ]]; then
   selected_api_providers=("${manual_api_providers[@]}")

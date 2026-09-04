@@ -337,11 +337,10 @@ enum WindowsResetLabelFormatter {
     guard !normalized.isEmpty,
       normalized.caseInsensitiveCompare("Reset unavailable") != .orderedSame
     else { return nil }
-    for prefix in ["Resets in ", "Reset in ", "Resets at ", "Reset at ", "Resets ", "Reset "] {
-      if normalized.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil {
-        normalized.removeFirst(prefix.count)
-        break
-      }
+    for prefix in ["Resets in ", "Reset in ", "Resets at ", "Reset at ", "Resets ", "Reset "]
+    where normalized.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil {
+      normalized.removeFirst(prefix.count)
+      break
     }
     normalized = normalized.replacingOccurrences(
       of: #"\s*\((?:UTC|GMT)[^)]*\)\s*$"#,

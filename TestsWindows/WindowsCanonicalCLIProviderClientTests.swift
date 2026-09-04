@@ -16,7 +16,12 @@
             "primary":{"usedPercent":18,"windowMinutes":300,"resetsAt":"2030-01-02T03:04:05Z","resetDescription":null},
             "secondary":{"usedPercent":44,"windowMinutes":10080,"resetsAt":null,"resetDescription":"Sunday"},
             "tertiary":null,
-            "extraRateWindows":[{"id":"flash","title":"Flash","usageKnown":true,"window":{"usedPercent":7,"windowMinutes":1440,"resetsAt":null,"resetDescription":null}}],
+            "extraRateWindows":[{
+              "id":"flash",
+              "title":"Flash",
+              "usageKnown":true,
+              "window":{"usedPercent":7,"windowMinutes":1440,"resetsAt":null,"resetDescription":null}
+            }],
             "updatedAt":"2026-08-24T01:00:00Z",
             "identity":{"loginMethod":"Google OAuth"}
           },
@@ -146,8 +151,16 @@
     func retriesStagedProviderUsage() async {
       let success = WindowsHiddenProcessResult(
         standardOutput: Data(
-          #"[{"provider":"poe","source":"api","usage":null,"credits":{"remaining":12,"updatedAt":"2026-08-24T01:00:00Z"},"error":null}]"#
-            .utf8),
+          #"""
+          [{
+            "provider":"poe",
+            "source":"api",
+            "usage":null,
+            "credits":{"remaining":12,"updatedAt":"2026-08-24T01:00:00Z"},
+            "error":null
+          }]
+          """#
+          .utf8),
         standardError: Data(),
         exitCode: 0)
       let runner = CanonicalRunnerState([
@@ -246,7 +259,22 @@
     @Test("balance identity is promoted instead of being shown as a plan")
     func promotesBalanceIdentity() throws {
       let payload =
-        #"{"provider":"poe","source":"api","usage":{"primary":null,"secondary":null,"tertiary":null,"extraRateWindows":[],"updatedAt":"2026-08-24T01:00:00Z","identity":{"loginMethod":"Balance: 4321 points"}},"credits":null,"error":null}"#
+        #"""
+        {
+          "provider":"poe",
+          "source":"api",
+          "usage":{
+            "primary":null,
+            "secondary":null,
+            "tertiary":null,
+            "extraRateWindows":[],
+            "updatedAt":"2026-08-24T01:00:00Z",
+            "identity":{"loginMethod":"Balance: 4321 points"}
+          },
+          "credits":null,
+          "error":null
+        }
+        """#
       let snapshot = try WindowsCanonicalCLIProviderClient.decode(
         data: Data(payload.utf8),
         requestedProvider: .poe,
@@ -259,7 +287,22 @@
     @Test("plain point identity is promoted as an allocation-free balance")
     func promotesPlainPointIdentity() throws {
       let payload =
-        #"{"provider":"poe","source":"api","usage":{"primary":null,"secondary":null,"tertiary":null,"extraRateWindows":[],"updatedAt":"2026-08-24T01:00:00Z","identity":{"loginMethod":"991,856 points"}},"credits":null,"error":null}"#
+        #"""
+        {
+          "provider":"poe",
+          "source":"api",
+          "usage":{
+            "primary":null,
+            "secondary":null,
+            "tertiary":null,
+            "extraRateWindows":[],
+            "updatedAt":"2026-08-24T01:00:00Z",
+            "identity":{"loginMethod":"991,856 points"}
+          },
+          "credits":null,
+          "error":null
+        }
+        """#
       let snapshot = try WindowsCanonicalCLIProviderClient.decode(
         data: Data(payload.utf8),
         requestedProvider: .poe,

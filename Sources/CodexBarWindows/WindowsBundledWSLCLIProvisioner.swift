@@ -94,7 +94,9 @@ struct WindowsBundledWSLCLIPayload: Equatable, Sendable {
   }
 
   private static func checksumValue(_ data: Data) -> String? {
-    let line = String(decoding: data, as: UTF8.self).components(separatedBy: .newlines).first ?? ""
+    // swiftlint:disable:next optional_data_string_conversion
+    let decoded = String(decoding: data, as: UTF8.self)
+    let line = decoded.components(separatedBy: .newlines).first ?? ""
     guard let token = line.split(whereSeparator: \.isWhitespace).first else { return nil }
     let value = String(token).lowercased()
     guard value.utf8.count == 64, value.allSatisfy(\.isHexDigit) else { return nil }
@@ -286,8 +288,10 @@ struct WindowsBundledWSLCLIProvisioner: Sendable {
   }
 
   static func decodedAbsoluteLinuxPath(_ data: Data) -> String? {
+    // swiftlint:disable:next optional_data_string_conversion
+    let decoded = String(decoding: data, as: UTF8.self)
     let value =
-      String(decoding: data, as: UTF8.self)
+      decoded
       .components(separatedBy: .newlines).first?
       .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     guard value.hasPrefix("/"), value.utf8.count <= 4096,
@@ -332,9 +336,11 @@ struct WindowsBundledWSLCLIProvisioner: Sendable {
         wslExecutable: wslExecutable),
       result.exitCode == 0
     else { return false }
+    // swiftlint:disable:next optional_data_string_conversion
+    let installedVersion = String(decoding: result.standardOutput, as: UTF8.self)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     guard
-      String(decoding: result.standardOutput, as: UTF8.self)
-        .trimmingCharacters(in: .whitespacesAndNewlines) == payload.version,
+      installedVersion == payload.version,
       let executableExpectedResult = self.run(
         ["/usr/bin/cat", destination.executableChecksum],
         distribution: distribution,
@@ -368,8 +374,10 @@ struct WindowsBundledWSLCLIProvisioner: Sendable {
   }
 
   static func checksumValue(_ data: Data) -> String? {
+    // swiftlint:disable:next optional_data_string_conversion
+    let decoded = String(decoding: data, as: UTF8.self)
     let line =
-      String(decoding: data, as: UTF8.self)
+      decoded
       .components(separatedBy: .newlines).first ?? ""
     guard let token = line.split(whereSeparator: \.isWhitespace).first else { return nil }
     let value = String(token).lowercased()

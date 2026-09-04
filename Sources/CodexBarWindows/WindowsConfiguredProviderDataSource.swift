@@ -121,6 +121,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
     }
   }
 
+  // swiftlint:disable:next function_body_length
   private func fetch(_ provider: WindowsProviderConfiguration) async -> WindowsProviderSnapshot {
     let credentialRoute = self.credentialRouteResolver.resolve(provider.id)
     let configuredSource = WindowsProviderSourcePresentation.configuredFallback(
@@ -330,6 +331,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
       })
   }
 
+  // swiftlint:disable:next function_parameter_count
   private func stagedInvocation(
     resolvedUsageCLI: ResolvedCLI,
     provider: WindowsProviderID,

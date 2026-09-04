@@ -217,8 +217,13 @@ enum WindowsHiddenProcessRunner {
   private static func openNullInput(security: inout SECURITY_ATTRIBUTES) -> HANDLE? {
     let handle = WindowsWideString.withPointer("NUL") { path in
       CreateFileW(
-        path, DWORD(GENERIC_READ), DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE), &security,
-        DWORD(OPEN_EXISTING), DWORD(FILE_ATTRIBUTE_NORMAL), nil)
+        path,
+        DWORD(GENERIC_READ),
+        DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE),
+        &security,
+        DWORD(OPEN_EXISTING),
+        DWORD(FILE_ATTRIBUTE_NORMAL),
+        nil)
     }
     return handle == INVALID_HANDLE_VALUE ? nil : handle
   }
