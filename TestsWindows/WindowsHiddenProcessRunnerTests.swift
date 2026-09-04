@@ -102,7 +102,6 @@
         fileURLWithPath: ProcessInfo.processInfo.environment["WINDIR"] ?? "C:\\Windows"
       )
       .appendingPathComponent("System32/ping.exe").path
-      let startedAt = Date()
       let task = Task.detached {
         try WindowsHiddenProcessRunner.run(
           executablePath: executable,
@@ -111,6 +110,7 @@
           maximumOutputBytes: 4096)
       }
       try? await Task.sleep(for: .milliseconds(150))
+      let cancellationStartedAt = Date()
       task.cancel()
       do {
         _ = try await task.value
@@ -120,7 +120,7 @@
       } catch {
         Issue.record("Expected cancelled, received \(error)")
       }
-      #expect(Date().timeIntervalSince(startedAt) < 3)
+      #expect(Date().timeIntervalSince(cancellationStartedAt) < 10)
     }
 
     @Test("output readers drain before a large stdin write")

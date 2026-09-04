@@ -17,7 +17,7 @@ param(
     [ValidateSet('x86_64', 'arm64')]
     [string] $AssetArchitecture,
 
-    [string] $RuntimeDirectory,
+    [string[]] $RuntimeDirectory,
 
     [Parameter(Mandatory)]
     [string] $OutputDirectory
@@ -25,6 +25,33 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+function Get-PEImage {
+    param(
+        [Parameter(Mandatory)]
+        [string] $File
+    )
+
+    $bytes = [IO.File]::ReadAllBytes($File)
+    if ($bytes.Length -lt 256 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+        throw "File is not a valid PE image: $File"
+    }
+
+    $peOffset = [BitConverter]::ToUInt32($bytes, 0x3C)
+    if ($peOffset + 94 -gt $bytes.Length -or
+        $bytes[$peOffset] -ne 0x50 -or
+        $bytes[$peOffset + 1] -ne 0x45 -or
+        $bytes[$peOffset + 2] -ne 0 -or
+        $bytes[$peOffset + 3] -ne 0) {
+        throw "File has an invalid PE header: $File"
+    }
+
+    [PSCustomObject]@{
+        Bytes = $bytes
+        PEOffset = $peOffset
+        Machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+    }
+}
 
 function Assert-PackagedPE {
     param(
@@ -37,38 +64,29 @@ function Assert-PackagedPE {
         [switch] $RequireWindowsGUISubsystem
     )
 
-    $bytes = [IO.File]::ReadAllBytes($Executable)
-    if ($bytes.Length -lt 256 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-        throw "Packaged executable is not a valid PE image: $Executable"
-    }
-
-    $peOffset = [BitConverter]::ToUInt32($bytes, 0x3C)
-    if ($peOffset + 94 -gt $bytes.Length -or
-        $bytes[$peOffset] -ne 0x50 -or
-        $bytes[$peOffset + 1] -ne 0x45 -or
-        $bytes[$peOffset + 2] -ne 0 -or
-        $bytes[$peOffset + 3] -ne 0) {
-        throw "Packaged executable has an invalid PE header: $Executable"
-    }
-
+    $image = Get-PEImage -File $Executable
+    $bytes = $image.Bytes
+    $peOffset = $image.PEOffset
     $expectedMachine = if ($Architecture -eq 'x86_64') { 0x8664 } else { 0xAA64 }
-    $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+    $machine = $image.Machine
     if ($machine -ne $expectedMachine) {
-        throw ('Packaged executable PE Machine is 0x{0:X4}; expected 0x{1:X4} for {2}.' -f
-            $machine, $expectedMachine, $Architecture)
+        throw ("Packaged PE file '{0}' has Machine 0x{1:X4}; expected 0x{2:X4} for {3}." -f
+            $Executable, $machine, $expectedMachine, $Architecture)
     }
 
     $optionalHeaderOffset = $peOffset + 24
     $optionalHeaderMagic = [BitConverter]::ToUInt16($bytes, $optionalHeaderOffset)
     if ($optionalHeaderMagic -ne 0x020B) {
-        throw ('Packaged executable optional-header magic is 0x{0:X4}; expected PE32+ 0x020B.' -f
-            $optionalHeaderMagic)
+        throw ("Packaged PE file '{0}' has optional-header magic 0x{1:X4}; expected PE32+ 0x020B." -f
+            $Executable, $optionalHeaderMagic)
     }
 
     if ($RequireWindowsGUISubsystem) {
         $subsystem = [BitConverter]::ToUInt16($bytes, $optionalHeaderOffset + 68)
         if ($subsystem -ne 2) {
-            throw "Packaged executable subsystem is $subsystem; expected IMAGE_SUBSYSTEM_WINDOWS_GUI (2)."
+            $subsystemError =
+                "Packaged PE file '{0}' has subsystem {1}; expected IMAGE_SUBSYSTEM_WINDOWS_GUI (2)."
+            throw ($subsystemError -f $Executable, $subsystem)
         }
     }
 }
@@ -186,21 +204,31 @@ try {
     Copy-Item -LiteralPath $appExecutable -Destination $stageDirectory
     Copy-Item -LiteralPath $appResources -Destination $stageDirectory -Recurse
 
+    $providedRuntimeDirectories = @(
+        $RuntimeDirectory | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
     $runtimeDirectories = @(
-        if ([string]::IsNullOrWhiteSpace($RuntimeDirectory)) {
+        if ($providedRuntimeDirectories.Count -eq 0) {
             $targetInfo = swiftc -print-target-info | ConvertFrom-Json
             @($targetInfo.paths.runtimeLibraryPaths) |
                 Where-Object { Test-Path -LiteralPath $_ -PathType Container }
         } else {
-            (Resolve-Path -LiteralPath $RuntimeDirectory).Path
+            $providedRuntimeDirectories | ForEach-Object {
+                (Resolve-Path -LiteralPath $_).Path
+            }
         }
     )
     if ($runtimeDirectories.Count -eq 0) {
         throw 'Swift reported no usable Windows runtime library directory.'
     }
+    $expectedRuntimeMachine = if ($AssetArchitecture -eq 'x86_64') { 0x8664 } else { 0xAA64 }
     foreach ($runtimeDirectory in $runtimeDirectories) {
-        Get-ChildItem -LiteralPath $runtimeDirectory -Filter '*.dll' -File |
-            Copy-Item -Destination $stageDirectory
+        Get-ChildItem -LiteralPath $runtimeDirectory -Filter '*.dll' -File | ForEach-Object {
+            $runtimeImage = Get-PEImage -File $_.FullName
+            if ($runtimeImage.Machine -eq $expectedRuntimeMachine) {
+                Copy-Item -LiteralPath $_.FullName -Destination $stageDirectory -Force
+            }
+        }
     }
 
     $cliPayloadItems = @('CodexBar_CodexBarCore.bundle', 'CodexBarCLI', 'VERSION')
