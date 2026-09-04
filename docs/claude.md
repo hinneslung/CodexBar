@@ -131,6 +131,10 @@ Admin API key setup:
   - Extra usage spend/limit (if enabled).
   - Remaining Usage credits balance (if enabled).
   - Account email + inferred plan.
+- A Cloudflare challenge on `claude.ai` is a network-path restriction, not a stale-cookie signal. CodexBar keeps the
+  cached cookie and prior quota snapshot, identifies the challenge, and links to Settings. Select OAuth for live
+  quota windows on that network (the web-only Usage credits balance is unavailable), or try a different network.
+  Explicit Web mode remains terminal and never reads OAuth credentials as a fallback.
 
 ## claude-swap accounts (opt-in)
 
@@ -139,6 +143,8 @@ The accepted multi-account design in
 
 - Setup: Preferences → Providers → Claude → "Read accounts from claude-swap", then set the path to the
   [`cswap`](https://github.com/realiti4/claude-swap) executable (for example `~/.local/bin/cswap`).
+- Version detection retries after a failed or cancelled startup probe; replaced refreshes cannot overwrite a newer
+  result, and disabling the adapter or changing its executable clears the previous detected version.
 - Behavior: on each Claude refresh, CodexBar runs `cswap --list --json` independently of the ambient Claude fetch (no
   shell, fixed arguments, bounded runtime and output), requires `schemaVersion == 1`, and parses only slot number,
   active state, usage status, email (display only), display-only `organizationName` (always present, may be empty),
@@ -213,6 +219,7 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
 - Parsing (`ClaudeStatusProbe`):
   - Strips ANSI, locates "Current session" + "Current week" headers.
   - Extracts percent left/used and reset text near those headers.
+  - When a reset date cannot be parsed, the menu preserves its description and normalizes leading `Reset` or `Resets` labels once, including scoped weekly limits.
   - Parses `Account:` and `Org:` lines when present.
   - Surfaces CLI errors (e.g. token expired) directly.
   - Some Education and organization-managed subscriptions return only a subscription notice, with no numeric
@@ -244,7 +251,7 @@ Model-scoped weekly-window proof (synthetic data, no real accounts or credential
     single pi-compatible session can contribute to multiple models/days.
   - Matching assistant entry IDs within the same session are counted once across roots; distinct turns are retained.
 - Cache:
-  - Native + merged provider cache: `~/Library/Caches/CodexBar/cost-usage/claude-v2.json`
+  - Native provider cache: `~/Library/Caches/CodexBar/cost-usage/claude-v6.json`
   - pi-compatible session cache: `~/Library/Caches/CodexBar/cost-usage/pi-sessions-v7.json`
 
 ## Key files

@@ -286,6 +286,7 @@ jobs:
       - swift-test-macos
       - swift-test-windows
       - build-linux-musl-cli
+      - build-linux-cli
     if: ${{ always() && !cancelled() }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -300,6 +301,7 @@ jobs:
             "${{ needs.changes.outputs.macos-tests-deferred }}" \
             "${{ needs.changes.outputs.linux-musl-build }}" \
             "${{ needs.build-linux-musl-cli.result }}" \
+            "${{ needs.build-linux-cli.result }}" \
             "${{ needs.swift-test-windows.result }}"
 
       - name: Summarize aggregate CI gate
@@ -315,6 +317,7 @@ jobs:
           LINUX_MUSL_BUILD: ${{ needs.changes.outputs.linux-musl-build }}
           LINUX_MUSL_BUILD_REASON: ${{ needs.changes.outputs.linux-musl-build-reason }}
           LINUX_MUSL_RESULT: ${{ needs.build-linux-musl-cli.result }}
+          LINUX_RESULT: ${{ needs.build-linux-cli.result }}
           WINDOWS_RESULT: ${{ needs.swift-test-windows.result }}
         run: |
           set -euo pipefail
@@ -335,6 +338,7 @@ jobs:
             printf '| Linux musl build required | `%s` |\n' "${LINUX_MUSL_BUILD:-<unset>}"
             printf '| Linux musl gate reason | %s |\n' "$musl_reason"
             printf '| build-linux-musl-cli result | `%s` |\n' "$LINUX_MUSL_RESULT"
+            printf '| build-linux-cli matrix result | `%s` |\n' "$LINUX_RESULT"
             printf '| swift-test-windows result | `%s` |\n' "$WINDOWS_RESULT"
           } >> "$GITHUB_STEP_SUMMARY"
 
