@@ -7,11 +7,12 @@
   struct WindowsProviderSnapshotPublisherTests {
     @Test("credential mutation during a delayed sibling rejects the stale provider at commit")
     func delayedBatchRejectsStaleProvider() async throws {
+      let provider = WindowsProviderID.windsurf
       let revision = LockedRevision("revision-before-fetch")
-      let siblingStarted = DispatchSemaphore(value: 0)
-      let releaseSibling = DispatchSemaphore(value: 0)
+      let siblingStarted = SnapshotLockedFlag()
+      let releaseSibling = SnapshotLockedFlag()
       let staleSnapshot = WindowsProviderSnapshot(
-        provider: .poe,
+        provider: provider,
         availability: .available,
         usedPercent: 10,
         sourceText: "Manual · WSL CLI · Ubuntu",
@@ -19,8 +20,8 @@
           revision.value == "revision-before-fetch"
         })
       let batch = Task.detached {
-        siblingStarted.signal()
-        _ = releaseSibling.wait(timeout: .now() + 5)
+        siblingStarted.set()
+        try await waitForSnapshotPublisherCondition(timeout: .seconds(5)) { releaseSibling.value }
         return [
           staleSnapshot,
           WindowsProviderSnapshot(
@@ -31,39 +32,46 @@
         ]
       }
 
-      #expect(siblingStarted.wait(timeout: .now() + 2) == .success)
-      try WindowsProviderOperationLock.withLock(provider: .poe) {
+      defer { releaseSibling.set() }
+      try await waitForSnapshotPublisherCondition(timeout: .seconds(2)) { siblingStarted.value }
+      try WindowsProviderOperationLock.withLock(provider: provider) {
         revision.set("revision-saved-by-other-process")
       }
-      releaseSibling.signal()
+      releaseSibling.set()
 
       let committed = LockedProviders()
-      let outcome = WindowsProviderSnapshotPublisher.publish(await batch.value) { snapshot in
+      let outcome = WindowsProviderSnapshotPublisher.publish(try await batch.value) { snapshot in
         committed.append(snapshot.provider)
       }
-      #expect(outcome.rejectedProviders == [.poe])
+      #expect(outcome.rejectedProviders == [provider])
       #expect(outcome.requiresRefresh)
       #expect(committed.value == [.cursor])
     }
 
     @Test("publication rejects provider mutex contention without blocking the UI thread")
     func contentionRejectsImmediately() async throws {
-      let holderEntered = DispatchSemaphore(value: 0)
+      let provider = WindowsProviderID.zed
+      let holderEntered = SnapshotLockedFlag()
       let releaseHolder = DispatchSemaphore(value: 0)
-      let holder = Task.detached {
-        try WindowsProviderOperationLock.withLock(provider: .poe) {
-          holderEntered.signal()
-          _ = releaseHolder.wait(timeout: .now() + 5)
+      let holder = Task {
+        try await runSnapshotPublisherHolder {
+          try WindowsProviderOperationLock.withLock(provider: provider) {
+            holderEntered.set()
+            guard releaseHolder.wait(timeout: .now() + 5) == .success else {
+              throw SnapshotPublisherTestError.timedOut
+            }
+          }
         }
       }
-      #expect(holderEntered.wait(timeout: .now() + 2) == .success)
+      defer { releaseHolder.signal() }
+      try await waitForSnapshotPublisherCondition(timeout: .seconds(2)) { holderEntered.value }
 
       let committed = LockedProviders()
       let clock = ContinuousClock()
       let started = clock.now
       let outcome = WindowsProviderSnapshotPublisher.publish([
         WindowsProviderSnapshot(
-          provider: .poe,
+          provider: provider,
           availability: .available,
           sourceText: "Manual · WSL CLI · Ubuntu")
       ]) { snapshot in
@@ -72,11 +80,43 @@
       let elapsed = started.duration(to: clock.now)
 
       #expect(elapsed < .seconds(1))
-      #expect(outcome.rejectedProviders == [.poe])
+      #expect(outcome.rejectedProviders == [provider])
       #expect(outcome.requiresRefresh)
       #expect(committed.value.isEmpty)
       releaseHolder.signal()
       try await holder.value
+    }
+  }
+
+  private enum SnapshotPublisherTestError: Error {
+    case timedOut
+  }
+
+  private func runSnapshotPublisherHolder(
+    _ operation: @escaping @Sendable () throws -> Void
+  ) async throws {
+    let queue = DispatchQueue(label: "CodexBarTests.ProviderSnapshotPublisher")
+    try await withCheckedThrowingContinuation { continuation in
+      queue.async {
+        do {
+          try operation()
+          continuation.resume()
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+
+  private func waitForSnapshotPublisherCondition(
+    timeout: Duration,
+    condition: @escaping @Sendable () -> Bool
+  ) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while !condition() {
+      guard clock.now < deadline else { throw SnapshotPublisherTestError.timedOut }
+      try await Task.sleep(for: .milliseconds(10))
     }
   }
 
@@ -107,6 +147,19 @@
 
     func append(_ provider: WindowsProviderID) {
       self.lock.withLock { self.providers.append(provider) }
+    }
+  }
+
+  private final class SnapshotLockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedValue = false
+
+    var value: Bool {
+      self.lock.withLock { self.storedValue }
+    }
+
+    func set() {
+      self.lock.withLock { self.storedValue = true }
     }
   }
 #endif

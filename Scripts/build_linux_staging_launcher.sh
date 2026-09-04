@@ -26,7 +26,7 @@ mkdir -p "$(dirname "$output")"
 if [[ -n "$sysroot" ]]; then
   compiler="${CC:-clang}"
   "$compiler" -target "$triple" --sysroot="$sysroot" -std=c11 -O2 -Wall -Wextra -Werror \
-    -static -fPIE -pie "$source_file" -o "$output"
+    -static-pie "$source_file" -o "$output"
 else
   native="$(uname -m)"
   if [[ "$native" != "$architecture" && ! ( "$native" == "arm64" && "$architecture" == "aarch64" ) ]]; then

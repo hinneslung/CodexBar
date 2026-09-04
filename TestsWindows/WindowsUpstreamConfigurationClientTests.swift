@@ -436,9 +436,14 @@
     }
 
     private static func shellArray(named name: String, in script: String) throws -> [String] {
-      let start = try #require(script.range(of: "\(name)=(\n"))
-      let end = try #require(script.range(of: "\n)", range: start.upperBound..<script.endIndex))
-      return script[start.upperBound..<end.lowerBound]
+      let normalizedScript =
+        script
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+      let start = try #require(normalizedScript.range(of: "\(name)=(\n"))
+      let end = try #require(
+        normalizedScript.range(of: "\n)", range: start.upperBound..<normalizedScript.endIndex))
+      return normalizedScript[start.upperBound..<end.lowerBound]
         .split(whereSeparator: \.isWhitespace)
         .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "'\"")) }
         .filter { !$0.isEmpty && !$0.hasPrefix("#") }

@@ -7,28 +7,71 @@
   struct WindowsProviderOperationLockTests {
     @Test("vault mutation waits for an active provider operation")
     func serializesProviderOperations() async throws {
-      let firstEntered = DispatchSemaphore(value: 0)
+      let provider = WindowsProviderID.abacus
+      let firstEntered = LockedFlag()
       let releaseFirst = DispatchSemaphore(value: 0)
+      let secondAttempted = LockedFlag()
       let secondEntered = LockedFlag()
 
-      let first = Task.detached {
-        try WindowsProviderOperationLock.withLock(provider: .poe) {
-          firstEntered.signal()
-          _ = releaseFirst.wait(timeout: .now() + 5)
+      let first = Task {
+        try await runProviderLockOperation {
+          try WindowsProviderOperationLock.withLock(provider: provider) {
+            firstEntered.set()
+            guard releaseFirst.wait(timeout: .now() + 5) == .success else {
+              throw ProviderOperationLockTestError.timedOut
+            }
+          }
         }
       }
-      #expect(firstEntered.wait(timeout: .now() + 2) == .success)
-      let second = Task.detached {
-        try WindowsProviderOperationLock.withLock(provider: .poe) {
-          secondEntered.set()
+      defer { releaseFirst.signal() }
+      try await waitForProviderLockCondition(timeout: .seconds(2)) { firstEntered.value }
+      let second = Task {
+        try await runProviderLockOperation {
+          secondAttempted.set()
+          try WindowsProviderOperationLock.withLock(provider: provider) {
+            secondEntered.set()
+          }
         }
       }
+      try await waitForProviderLockCondition(timeout: .seconds(2)) { secondAttempted.value }
       try? await Task.sleep(for: .milliseconds(150))
       #expect(!secondEntered.value)
       releaseFirst.signal()
       try await first.value
       try await second.value
       #expect(secondEntered.value)
+    }
+  }
+
+  private enum ProviderOperationLockTestError: Error {
+    case timedOut
+  }
+
+  private func runProviderLockOperation(
+    _ operation: @escaping @Sendable () throws -> Void
+  ) async throws {
+    let queue = DispatchQueue(label: "CodexBarTests.ProviderOperationLock")
+    try await withCheckedThrowingContinuation { continuation in
+      queue.async {
+        do {
+          try operation()
+          continuation.resume()
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+    }
+  }
+
+  private func waitForProviderLockCondition(
+    timeout: Duration,
+    condition: @escaping @Sendable () -> Bool
+  ) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: timeout)
+    while !condition() {
+      guard clock.now < deadline else { throw ProviderOperationLockTestError.timedOut }
+      try await Task.sleep(for: .milliseconds(10))
     }
   }
 
