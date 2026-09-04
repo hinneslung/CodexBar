@@ -27,15 +27,21 @@ Start-Process .\.build\x86_64-unknown-windows-msvc\debug\CodexBar.exe
 
 The application remains in the notification area after the popup is hidden.
 
-To prove both release architectures compile, use the target triples explicitly:
+Local release compilation can use the target triples explicitly:
 
 ```powershell
 swift build -c release --product CodexBar --triple x86_64-unknown-windows-msvc
 swift build -c release --product CodexBar --triple aarch64-unknown-windows-msvc
 ```
 
-The ARM64 command needs the ARM64 MSVC tools and the ARM64 libraries from the Windows Swift SDK. An
-ARM64 executable built on x64 can be inspected there, but must be run on an ARM64 Windows machine.
+The ARM64 command needs the ARM64 MSVC tools and the ARM64 libraries from the Windows Swift SDK.
+Cross-compiling and inspecting an ARM64 executable on an x64 PC does not prove that the ARM64 tests
+or application run successfully.
+
+Ordinary GitHub CI builds and runs the Windows portability tests separately on native AMD64
+(`windows-2025`) and native ARM64 (`windows-11-vs2026-arm`) runners. Each job verifies the runner
+architecture, Swift target triple, PE machine, and Windows GUI subsystem. The native ARM64 job is the
+runtime evidence that cannot be produced by a local AMD64 machine.
 
 ## Release archives
 
@@ -45,11 +51,12 @@ GitHub Releases provides two self-contained archives:
 - `CodexBar-v<tag>-windows-arm64.zip` for ARM64 Windows.
 
 Extract the complete directory and start `CodexBar.exe`. Keep its DLL, resource, and `wsl-cli`
-folders beside the executable. The release workflow builds each archive on the matching Windows
-architecture, verifies its PE machine and GUI subsystem, requires the app-local Swift and Microsoft
-runtime DLLs, and smoke-starts the packaged application before publishing it. These ZIPs are currently
-unsigned because this repository has no configured Windows signing identity; Windows may therefore
-show its downloaded-app reputation warning.
+folders beside the executable. The release workflow runs the Windows tests and builds each archive
+on the matching native Windows architecture. It pairs that app with the same-architecture static
+Linux-musl WSL CLI and staging launcher, verifies the PE and ELF machines, GUI subsystem, checksums,
+layout, and app-local Swift and Microsoft runtime DLLs, then smoke-starts the fully extracted archive
+on the same native runner. These ZIPs are currently unsigned because this repository has no configured
+Windows signing identity; Windows may therefore show its downloaded-app reputation warning.
 
 ## Provider engine
 

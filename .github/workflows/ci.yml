@@ -6,6 +6,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -210,7 +213,23 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   swift-test-windows:
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset-arch: x86_64
+            runs-on: windows-2025
+            build-arch: amd64
+            runner-architecture: AMD64
+            target-triple: x86_64-unknown-windows-msvc
+            pe-machine: IMAGE_FILE_MACHINE_AMD64
+          - asset-arch: arm64
+            runs-on: windows-11-vs2026-arm
+            build-arch: arm64
+            runner-architecture: ARM64
+            target-triple: aarch64-unknown-windows-msvc
+            pe-machine: IMAGE_FILE_MACHINE_ARM64
+    runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -220,12 +239,22 @@ jobs:
         with:
           swift-version: swift-6.3.3-release
           swift-build: 6.3.3-RELEASE
+          build_arch: ${{ matrix.build-arch }}
 
-      - name: Swift toolchain version
+      - name: Verify native Windows toolchain
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           swift --version
           swift package --version
+          if ($env:PROCESSOR_ARCHITECTURE -ne '${{ matrix.runner-architecture }}') {
+            throw "Runner architecture is $env:PROCESSOR_ARCHITECTURE; expected ${{ matrix.runner-architecture }}."
+          }
+          $targetInfo = swiftc -print-target-info | ConvertFrom-Json
+          $actualTarget = $targetInfo.target.triple
+          if ($actualTarget -ne '${{ matrix.target-triple }}') {
+            throw "Swift target triple is $actualTarget; expected ${{ matrix.target-triple }}."
+          }
 
       - name: Build notification-area app
         shell: pwsh
@@ -235,23 +264,16 @@ jobs:
         shell: pwsh
         run: swift test -Xswiftc -warnings-as-errors
 
-      - name: Cross-build ARM64 notification-area app
-        shell: pwsh
-        run: >-
-          swift build -c release --product CodexBar
-          --triple aarch64-unknown-windows-msvc
-          -Xswiftc -warnings-as-errors
-
-      - name: Verify ARM64 Windows GUI executable
+      - name: Verify native Windows GUI executable
         shell: pwsh
         run: |
-          $bin = swift build -c release --product CodexBar `
-            --triple aarch64-unknown-windows-msvc --show-bin-path
+          $ErrorActionPreference = 'Stop'
+          $bin = (swift build --product CodexBar --show-bin-path).Trim()
           $headers = llvm-readobj --file-headers (Join-Path $bin 'CodexBar.exe')
-          if ($headers -notmatch 'IMAGE_FILE_MACHINE_ARM64') {
-            throw 'CodexBar.exe is not an ARM64 PE executable.'
+          if (-not ($headers -match '${{ matrix.pe-machine }}')) {
+            throw 'CodexBar.exe does not match the native runner architecture.'
           }
-          if ($headers -notmatch 'IMAGE_SUBSYSTEM_WINDOWS_GUI') {
+          if (-not ($headers -match 'IMAGE_SUBSYSTEM_WINDOWS_GUI')) {
             throw 'CodexBar.exe is not a Windows GUI executable.'
           }
 
