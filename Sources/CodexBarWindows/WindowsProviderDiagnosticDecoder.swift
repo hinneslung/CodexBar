@@ -50,13 +50,12 @@ enum WindowsProviderDiagnosticDecoder {
     }
     try Self.validate(payload)
 
-    let resolvedSource = source.resolvingUpstream(payload.source, provider: requestedProvider)
     if let error = payload.error, payload.usage == nil {
       return WindowsProviderDiagnosticDecodeResult(
         snapshot: WindowsProviderSnapshot(
           provider: requestedProvider,
           availability: .error,
-          source: resolvedSource,
+          source: source,
           safeErrorText: Self.safeErrorMessage(category: error.category),
           updatedAt: payload.timestamp),
         shouldRetry: ["network", "api"].contains(error.category))
@@ -64,6 +63,7 @@ enum WindowsProviderDiagnosticDecoder {
     guard let usage = payload.usage else {
       throw WindowsCanonicalCLIError.invalidPayload
     }
+    let resolvedSource = source.resolvingUpstream(payload.source, provider: requestedProvider)
 
     let windows = usage.windows.compactMap { window -> WindowsProviderWindowSnapshot? in
       guard window.usageKnown else { return nil }

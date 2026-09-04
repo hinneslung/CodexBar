@@ -398,7 +398,7 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
   let isRefreshing: Bool
 
   static func loading(
-    providers: [WindowsProviderID] = WindowsProviderID.liveProviders
+    providers: [WindowsProviderID] = WindowsProviderID.initiallyEnabledProviders
   ) -> Self {
     Self(
       rows: providers.map { provider in
@@ -422,7 +422,7 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
   static func make(
     snapshots: [WindowsProviderSnapshot],
     refreshedAt: Date,
-    providers: [WindowsProviderID] = WindowsProviderID.liveProviders,
+    providers: [WindowsProviderID] = WindowsProviderID.initiallyEnabledProviders,
     isRefreshing: Bool = false
   ) -> Self {
     let snapshotsByProvider = Dictionary(

@@ -84,37 +84,37 @@
     func automaticCredentialGuidance() {
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .kimi)
-          == "Automatically uses its OpenCode CLI connection. "
-          + "Otherwise, uses credentials from the provider's app or CLI. "
+          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials from its app or CLI or existing CodexBar CLI configuration. "
           + "Select a manual option if Automatic fails."
       )
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .amp)
-          == "Automatically uses credentials from the provider's app or CLI. "
+          == "Automatically uses credentials from this provider's app or CLI or existing CodexBar CLI configuration. "
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .codex)
-          == "Automatically uses credentials from the provider's app or CLI.")
+          == "Automatically uses credentials from this provider's app or CLI or existing CodexBar CLI configuration."
+      )
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .openCodeGo)
-          == "Automatically uses its OpenCode CLI connection. "
-          + "Otherwise, uses CodexBar CLI credentials. "
+          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI. "
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .clinePass)
-          == "Automatically uses its OpenCode CLI connection. "
-          + "Otherwise, uses CodexBar CLI credentials.")
+          == "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI. "
+          + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .deepgram)
-          == "Automatically uses CodexBar CLI credentials. "
+          == "Automatically uses credentials already configured in CodexBar CLI. "
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .factory)
-          == "Automatically uses credentials from the provider's app or CLI. "
+          == "Automatically uses credentials from this provider's app or CLI or existing CodexBar CLI configuration. "
           + "Select a manual option if Automatic fails.")
       #expect(
         WindowsProviderConfigurationCatalog.automaticCredentialDescription(provider: .wayfinder)
-          == "Automatically uses credentials from the provider's app or CLI.")
+          == "Automatically uses credentials from this provider's app or CLI or existing CodexBar CLI configuration."
+      )
 
       for provider in WindowsProviderCatalog.entries.map(\.id) {
         let description =
@@ -315,16 +315,30 @@
       #expect(api.source.isResolved)
       #expect(specific.sourceText == "Ubuntu · Claude CLI")
 
-      let factory = try WindowsCanonicalCLIProviderClient.decode(
-        data: try Self.payload(source: "api", provider: .factory),
-        requestedProvider: .factory,
-        source: automatic)
+      for provider: WindowsProviderID in [.amp, .codebuff, .doubao, .factory, .kilo] {
+        let snapshot = try WindowsCanonicalCLIProviderClient.decode(
+          data: try Self.payload(source: "api", provider: provider),
+          requestedProvider: provider,
+          source: automatic)
+        #expect(snapshot.sourceText == "Ubuntu · API key")
+      }
+
       let wayfinder = try WindowsCanonicalCLIProviderClient.decode(
         data: try Self.payload(source: "api", provider: .wayfinder),
         requestedProvider: .wayfinder,
         source: automatic)
-      #expect(factory.sourceText == "Ubuntu · Provider app/CLI")
+      let bedrock = try WindowsCanonicalCLIProviderClient.decode(
+        data: try Self.payload(source: "api", provider: .bedrock),
+        requestedProvider: .bedrock,
+        source: automatic)
       #expect(wayfinder.sourceText == "Ubuntu · Provider app/CLI")
+      #expect(bedrock.sourceText == "Ubuntu · Provider app/CLI")
+
+      let ampCLI = try WindowsCanonicalCLIProviderClient.decode(
+        data: try Self.payload(source: "cli", provider: .amp),
+        requestedProvider: .amp,
+        source: automatic)
+      #expect(ampCLI.sourceText == "Ubuntu · Provider CLI")
     }
 
     @Test("canonical source decoding recognizes provider and mechanism patterns")

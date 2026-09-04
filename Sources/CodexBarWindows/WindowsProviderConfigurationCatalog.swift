@@ -18,6 +18,7 @@ struct WindowsProviderConfigurationField: Sendable, Equatable {
 
   enum Validation: Sendable, Equatable {
     case secret
+    case allowedPrefixes([String], minimumSuffixLength: Int, rejectionMessage: String)
     case browserCredential(WindowsBrowserCredentialPolicy)
     case nonempty
     case azureEndpoint
@@ -68,9 +69,18 @@ struct WindowsProviderConfigurationField: Sendable, Equatable {
     guard case .browserCredential(let policy) = self.validation else { return nil }
     return WindowsBrowserCredentialParser.validate(value, policy: policy)
   }
+
+  func displaySafeValidationMessage(_ value: String) -> String? {
+    WindowsProviderConfigurationValidator.rejectionMessage(value, validation: self.validation)
+  }
 }
 
 struct WindowsProviderCredentialSet: Sendable, Equatable {
+  enum SecretTransport: Sendable, Equatable {
+    case stagedConfig
+    case stagedTokenAccount
+  }
+
   enum Role: Sendable, Equatable {
     case primaryAuthentication
     case alternateRoute
@@ -88,6 +98,7 @@ struct WindowsProviderCredentialSet: Sendable, Equatable {
   let captureInstructions: [String]
   let securityNotice: String?
   let executionMode: WindowsCanonicalCLIInvocation.ExecutionMode
+  let secretTransport: SecretTransport
 
   init(
     id: String,
@@ -100,7 +111,8 @@ struct WindowsProviderCredentialSet: Sendable, Equatable {
     role: Role = .primaryAuthentication,
     captureInstructions: [String] = [],
     securityNotice: String? = nil,
-    executionMode: WindowsCanonicalCLIInvocation.ExecutionMode = .usage
+    executionMode: WindowsCanonicalCLIInvocation.ExecutionMode = .usage,
+    secretTransport: SecretTransport = .stagedConfig
   ) {
     self.id = id
     self.label = label
@@ -113,6 +125,7 @@ struct WindowsProviderCredentialSet: Sendable, Equatable {
     self.captureInstructions = captureInstructions
     self.securityNotice = securityNotice
     self.executionMode = executionMode
+    self.secretTransport = secretTransport
   }
 
   var inputPolicy: WindowsBrowserCredentialPolicy? {
@@ -127,6 +140,19 @@ struct WindowsProviderConfigurationSchema: Sendable, Equatable {
   let provider: WindowsProviderID
   let cliName: String
   let credentialSets: [WindowsProviderCredentialSet]
+  let automaticExecutionMode: WindowsCanonicalCLIInvocation.ExecutionMode
+
+  init(
+    provider: WindowsProviderID,
+    cliName: String,
+    credentialSets: [WindowsProviderCredentialSet],
+    automaticExecutionMode: WindowsCanonicalCLIInvocation.ExecutionMode = .usage
+  ) {
+    self.provider = provider
+    self.cliName = cliName
+    self.credentialSets = credentialSets
+    self.automaticExecutionMode = automaticExecutionMode
+  }
 
   var manualCredentialSets: [WindowsProviderCredentialSet] {
     self.credentialSets.filter(\.acceptsManual)
@@ -195,18 +221,18 @@ enum WindowsProviderConfigurationCatalog {
       switch (providerAppOrCLI, supportsOpenCode) {
       case (true, true):
         [
-          "Automatically uses its OpenCode CLI connection.",
-          "Otherwise, uses credentials from the provider's app or CLI.",
+          "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials from its app or CLI or existing CodexBar CLI configuration."
         ]
       case (true, false):
-        ["Automatically uses credentials from the provider's app or CLI."]
+        [
+          "Automatically uses credentials from this provider's app or CLI or existing CodexBar CLI configuration."
+        ]
       case (false, true):
         [
-          "Automatically uses its OpenCode CLI connection.",
-          "Otherwise, uses CodexBar CLI credentials.",
+          "Automatically uses this provider's OpenCode connection when available. Otherwise, it uses credentials already configured in CodexBar CLI."
         ]
       case (false, false):
-        ["Automatically uses CodexBar CLI credentials."]
+        ["Automatically uses credentials already configured in CodexBar CLI."]
       }
 
     let hasManualCredential = self.byProvider[provider]?.manualCredentialSets.isEmpty == false
@@ -216,13 +242,13 @@ enum WindowsProviderConfigurationCatalog {
     return sentences.joined(separator: " ")
   }
 
-  /// API routes whose staged `apiKey` was proven to be consumed by the unchanged release CLI.
+  /// Manual API routes proven to be consumed by the unchanged release CLI.
   static let manualAPIProviderIDs: Set<WindowsProviderID> = [
     .aiAnd, .alibaba, .amp, .azureOpenAI, .chutes, .claude, .codebuff, .copilot,
     .crof, .deepgram, .deepInfra, .doubao, .elevenLabs, .factory, .fireworks, .groq, .ibmBob,
     .kilo, .kimi, .liteLLM, .llmProxy, .moonshot, .neuralwatt, .ollama, .openai,
     .openCodeGo, .openRouter, .poe, .sub2API, .synthetic, .venice, .warp, .xAI,
-    .zai, .zenMux, .clawRouter,
+    .zai, .zenMux, .clawRouter, .clinePass, .deepSeek, .minimax,
   ]
 
   static let unavailableProviders: [WindowsProviderID: WindowsUnavailableProviderInfo] = [
@@ -261,6 +287,19 @@ enum WindowsProviderConfigurationCatalog {
     style: .secureSingleLine,
     required: true,
     validation: .secret)
+
+  private static let minimaxCodingPlanKey = WindowsProviderConfigurationField(
+    id: "apiKey",
+    storage: .apiKey,
+    label: "API key",
+    placeholder: "Paste MiniMax Coding Plan key",
+    guidance: "MiniMax Coding Plan key beginning with sk-cp-.",
+    style: .secureSingleLine,
+    required: true,
+    validation: .allowedPrefixes(
+      ["sk-cp-"],
+      minimumSuffixLength: 1,
+      rejectionMessage: "Enter a MiniMax Coding Plan key beginning with sk-cp-."))
 
   private static let openCodeWorkspace = WindowsProviderConfigurationField(
     id: "workspaceID",
@@ -398,7 +437,10 @@ enum WindowsProviderConfigurationCatalog {
       ]),
     Self.apiSchema(.deepgram, "deepgram"),
     Self.apiSchema(.deepInfra, "deepinfra"),
-    Self.apiSchema(.deepSeek, "deepseek"),
+    Self.apiSchema(
+      .deepSeek,
+      "deepseek",
+      secretTransport: .stagedTokenAccount),
     Self.apiSchema(.doubao, "doubao"),
     Self.apiSchema(.elevenLabs, "elevenlabs"),
     Self.apiSchema(.factory, "factory"),
@@ -445,7 +487,7 @@ enum WindowsProviderConfigurationCatalog {
           required: true,
           validation: .privateNetworkHTTPURL)
       ]),
-    Self.apiSchema(.minimax, "minimax"),
+    Self.apiSchema(.minimax, "minimax", apiKeyField: Self.minimaxCodingPlanKey),
     Self.webSchema(
       .manus,
       "manus",
@@ -556,6 +598,14 @@ enum WindowsProviderConfigurationCatalog {
         derivesManualCookieSource: true,
         fields: [Self.stepFunSessionToken],
         role: .alternateRoute,
+        captureInstructions: [
+          "Sign in to platform.stepfun.com in Chrome.",
+          "Press F12, open Network, then reload the page.",
+          "Select a Step Plan usage request, preferably QueryStepPlanRateLimit.",
+          "In Headers > Request Headers, right-click Cookie > Copy value.",
+          "Paste the Cookie value containing Oasis-Token=…, or only the value after Oasis-Token=.",
+          "Do not paste a cURL command in this field.",
+        ],
         executionMode: .diagnose)),
     Self.apiSchema(
       .sakana, "sakana",
@@ -770,7 +820,9 @@ enum WindowsProviderConfigurationCatalog {
     _ provider: WindowsProviderID,
     _ cliName: String,
     companions: [WindowsProviderConfigurationField] = [],
-    additionalSets: [WindowsProviderCredentialSet] = []
+    additionalSets: [WindowsProviderCredentialSet] = [],
+    apiKeyField: WindowsProviderConfigurationField = Self.apiKey,
+    secretTransport: WindowsProviderCredentialSet.SecretTransport = .stagedConfig
   ) -> WindowsProviderConfigurationSchema {
     WindowsProviderConfigurationSchema(
       provider: provider,
@@ -783,7 +835,8 @@ enum WindowsProviderConfigurationCatalog {
           acceptsManual: self.manualAPIProviderIDs.contains(provider),
           acceptsOpenCode: true,
           derivesManualCookieSource: false,
-          fields: [self.apiKey] + companions)
+          fields: [apiKeyField] + companions,
+          secretTransport: secretTransport)
       ] + additionalSets)
   }
 
@@ -795,7 +848,8 @@ enum WindowsProviderConfigurationCatalog {
     WindowsProviderConfigurationSchema(
       provider: provider,
       cliName: cliName,
-      credentialSets: [set])
+      credentialSets: [set],
+      automaticExecutionMode: set.executionMode)
   }
 }
 
@@ -836,6 +890,11 @@ enum WindowsProviderConfigurationValidator {
     switch validation {
     case .secret, .nonempty:
       return !value.contains(where: \.isNewline)
+    case .allowedPrefixes(let prefixes, let minimumSuffixLength, _):
+      return !value.contains(where: \.isNewline)
+        && prefixes.contains { prefix in
+          value.hasPrefix(prefix) && value.dropFirst(prefix.count).count >= minimumSuffixLength
+        }
     case .browserCredential(let policy):
       return WindowsBrowserCredentialParser.validate(rawValue, policy: policy).isValid
     case .azureEndpoint:
@@ -854,6 +913,15 @@ enum WindowsProviderConfigurationValidator {
     case .oneOf(let values):
       return values.contains(value)
     }
+  }
+
+  static func rejectionMessage(
+    _ rawValue: String,
+    validation: WindowsProviderConfigurationField.Validation
+  ) -> String? {
+    guard !Self.accepts(rawValue, validation: validation) else { return nil }
+    guard case .allowedPrefixes(_, _, let message) = validation else { return nil }
+    return message
   }
 
   private static func normalizedHTTPSURL(_ raw: String) -> URL? {

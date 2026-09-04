@@ -2013,7 +2013,8 @@ final class WindowsPopupWindow {
       return (browserResult.summary, browserResult.isValid)
     }
     let accepted = field.accepts(rawValue)
-    return (accepted ? "Accepted format" : "Check the required format", accepted)
+    let rejection = field.displaySafeValidationMessage(rawValue)
+    return (accepted ? "Accepted format" : rejection ?? "Check the required format", accepted)
   }
 
   private func isConfigured(_ field: WindowsProviderConfigurationField) -> Bool {

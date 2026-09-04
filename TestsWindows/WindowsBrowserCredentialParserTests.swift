@@ -86,6 +86,15 @@
           id: "session-token"))
       #expect(stepFun.label == "Session token")
       #expect(stepFun.fields.map(\.storage) == [.region])
+      #expect(
+        stepFun.captureInstructions == [
+          "Sign in to platform.stepfun.com in Chrome.",
+          "Press F12, open Network, then reload the page.",
+          "Select a Step Plan usage request, preferably QueryStepPlanRateLimit.",
+          "In Headers > Request Headers, right-click Cookie > Copy value.",
+          "Paste the Cookie value containing Oasis-Token=…, or only the value after Oasis-Token=.",
+          "Do not paste a cURL command in this field.",
+        ])
       let record = WindowsProviderCredentialRecord(
         provider: .stepFun,
         credentialSetID: stepFun.id,

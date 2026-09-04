@@ -41,6 +41,10 @@ enum WindowsCanonicalCLIError: LocalizedError, Sendable {
 struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertible,
   CustomDebugStringConvertible
 {
+  static let diagnosticProcessTimeout: TimeInterval = 90
+  static let stagedDiagnosticLauncherTimeoutSeconds = 75
+  static let stagedUsageLauncherTimeoutSeconds = 50
+
   enum ExecutionMode: String, Equatable, Sendable {
     case usage
     case diagnose
@@ -106,23 +110,34 @@ struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertib
       .caseInsensitiveCompare("wsl.exe") == .orderedSame
   }
 
+  var processTimeout: TimeInterval {
+    if self.executionMode == .diagnose { return Self.diagnosticProcessTimeout }
+    return self.standardInput == nil ? 45 : 60
+  }
+
   static func wsl(
     distribution: String,
     executablePath: String,
     providerID: String,
+    executionMode: ExecutionMode = .usage,
     windowsDirectory: String = ProcessInfo.processInfo.environment["WINDIR"] ?? "C:\\Windows"
   ) -> Self {
-    Self(
+    let commandArguments =
+      switch executionMode {
+      case .usage:
+        ["usage", "--provider", providerID, "--json-only"]
+      case .diagnose:
+        ["diagnose", "--provider", providerID, "--format", "json", "--redact"]
+      }
+    return Self(
       executablePath: URL(fileURLWithPath: windowsDirectory)
         .appendingPathComponent("System32/wsl.exe").path,
-      arguments: [
-        "-d", distribution, "--", executablePath,
-        "usage", "--provider", providerID, "--json-only",
-      ],
+      arguments: ["-d", distribution, "--", executablePath] + commandArguments,
       source: .init(distributionLabel: distribution, kind: .automatic, isResolved: false),
       distribution: distribution,
       standardInput: nil,
-      allowsRetry: true)
+      allowsRetry: true,
+      executionMode: executionMode)
   }
 
   static func stagedWSL(
@@ -135,12 +150,15 @@ struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertib
     executionMode: ExecutionMode = .usage,
     windowsDirectory: String = ProcessInfo.processInfo.environment["WINDIR"] ?? "C:\\Windows"
   ) -> Self {
-    Self(
+    let launcherTimeout =
+      executionMode == .diagnose
+      ? Self.stagedDiagnosticLauncherTimeoutSeconds : Self.stagedUsageLauncherTimeoutSeconds
+    return Self(
       executablePath: URL(fileURLWithPath: windowsDirectory)
         .appendingPathComponent("System32/wsl.exe").path,
       arguments: [
         "-d", distribution, "--", launcherPath,
-        "--timeout-seconds", "50", "--provider", providerID, "--source", source,
+        "--timeout-seconds", String(launcherTimeout), "--provider", providerID, "--source", source,
         "--mode", executionMode.rawValue,
       ],
       source: .init(
@@ -167,8 +185,6 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
   typealias RetryDelay = @Sendable () async throws -> Void
 
   private static let maximumOutputBytes = 1_048_576
-  /// Full upstream provider probes can legitimately exceed 30 seconds during a cold WSL start.
-  private static let timeout: TimeInterval = 45
   private static let wslExecutableNames = ["codexbar"]
   private let processRunner: ProcessRunner
   private let retryDelay: RetryDelay
@@ -381,7 +397,7 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
     let result = try self.processRunner(
       invocation.executablePath,
       invocation.arguments,
-      invocation.standardInput == nil ? Self.timeout : 60,
+      invocation.processTimeout,
       Self.maximumOutputBytes,
       environmentOverrides,
       invocation.standardInput)

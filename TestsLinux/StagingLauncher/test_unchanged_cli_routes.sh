@@ -46,6 +46,26 @@ config_for() {
     cookie_fields=",\"cookieHeader\":\"$browser_cookie\",\"cookieSource\":\"manual\""
   fi
   case "$provider:$source" in
+    deepseek:api)
+      if [[ "$include_credential" == true ]]; then
+        ephemeral_id="$(cat /proc/sys/kernel/random/uuid)"
+        printf '%s' \
+          '{"version":1,"providers":[{"id":"deepseek","enabled":true,"source":"api",' \
+          '"tokenAccounts":{"version":1,"accounts":[{' \
+          "\"id\":\"$ephemeral_id\"," \
+          '"label":"",' \
+          "\"token\":\"$canary\",\"addedAt\":0,\"lastUsed\":null}],\"activeIndex\":0}}]}"
+      else
+        printf '%s' '{"version":1,"providers":[{"id":"deepseek","enabled":true,"source":"api"}]}'
+      fi
+      ;;
+    minimax:api)
+      if [[ "$include_credential" == true ]]; then
+        api_key=",\"apiKey\":\"sk-cp-$canary\""
+      fi
+      printf '{"version":1,"providers":[{"id":"minimax","enabled":true,"source":"api"%s}]}' \
+        "$api_key"
+      ;;
     azureopenai:api)
       printf '%s' \
         "{\"version\":1,\"providers\":[{\"id\":\"azureopenai\",\"enabled\":true," \
@@ -408,15 +428,27 @@ run_open_code_bridge_route() {
     "$work/$provider-api-open-code-missing.stdout"
 }
 
+snapshot_config_tree() {
+  local root="$1"
+  (
+    cd "$root"
+    find . -type f -print0 | sort -z | while IFS= read -r -d '' path; do
+      printf '%s  ' "$path"
+      sha256sum "$path" | cut -d ' ' -f 1
+    done
+  )
+}
+
 manual_api_providers=(
-  aiand alibaba amp azureopenai chutes claude codebuff copilot crof deepgram
-  deepinfra doubao elevenlabs factory fireworks groq ibmbob kilo kimi litellm llmproxy
+  aiand alibaba amp azureopenai chutes claude clinepass codebuff copilot crof deepgram
+  deepinfra deepseek doubao elevenlabs factory fireworks groq ibmbob kilo kimi litellm llmproxy minimax
   moonshot neuralwatt ollama openai opencodego openrouter poe sub2api synthetic
   venice warp xai zai zenmux clawrouter
 )
 
 expanded_api_providers=(
   neuralwatt elevenlabs warp clawrouter llmproxy litellm sub2api xai
+  clinepass deepseek minimax
 )
 
 manual_web_routes=(
@@ -473,24 +505,61 @@ export launcher cli work canary
 export -f config_for assert_exec_evidence assert_structured_credential_evidence run_invocation run_route
 if [[ "${CODEXBAR_ROUTE_GATE_WEB_ONLY:-0}" != 1 ]]; then
   selected_api_providers=("${manual_api_providers[@]}")
+  if [[ -n "${CODEXBAR_ROUTE_GATE_API_PROVIDERS:-}" ]]; then
+    read -r -a selected_api_providers <<<"$CODEXBAR_ROUTE_GATE_API_PROVIDERS"
+    for provider in "${selected_api_providers[@]}"; do
+      printf '%s\n' "${manual_api_providers[@]}" | grep -Fxq "$provider" || {
+        echo "unsupported API provider requested for focused route gate: $provider" >&2
+        exit 64
+      }
+    done
+  fi
   if [[ "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" == 1 ]]; then
     selected_api_providers=("${expanded_api_providers[@]}")
   fi
-  printf '%s\n' "${selected_api_providers[@]}" |
+  filtered_api_providers=()
+  for provider in "${selected_api_providers[@]}"; do
+    [[ "$provider" == deepseek ]] || filtered_api_providers+=("$provider")
+  done
+  mkdir -p "$work/config/codexbar"
+  printf '%s' \
+    '{"version":1,"providers":[{"id":"deepseek","enabled":true,"source":"api",' \
+    '"tokenAccounts":{"version":1,"accounts":[{' \
+    '"id":"11111111-1111-4111-8111-111111111111","label":"Persistent fixture",' \
+    '"token":"persistent-config-canary","addedAt":1}],"activeIndex":0}}]}' \
+    >"$work/config/codexbar/config.json"
+  persistent_before="$(snapshot_config_tree "$work/config")"
+  if printf '%s\n' "${selected_api_providers[@]}" | grep -Fxq deepseek; then
+    run_route deepseek api
+  fi
+  persistent_after="$(snapshot_config_tree "$work/config")"
+  [[ "$persistent_after" == "$persistent_before" ]]
+  if grep -R -F -q -- "$canary" "$work"; then
+    echo "deepseek staged credential was copied into a named gate artifact" >&2
+    exit 1
+  fi
+  printf '%s\n' "${filtered_api_providers[@]}" |
     xargs -r -n 1 -P 5 bash -c 'run_route "$1" api' _
 fi
-if [[ "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" != 1 ]]; then
+if [[ "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" != 1 && \
+  -z "${CODEXBAR_ROUTE_GATE_API_PROVIDERS:-}" ]]
+then
   for route in "${manual_web_routes[@]}"; do
     IFS='|' read -r provider cli_provider source <<<"$route"
     run_web_route "$provider" "$cli_provider" "$source"
   done
 fi
-for route in "${diagnostic_web_routes[@]}"; do
-  IFS='|' read -r provider cli_provider source <<<"$route"
-  run_diagnostic_route "$provider" "$cli_provider" "$source"
-done
+if [[ "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" != 1 && \
+  -z "${CODEXBAR_ROUTE_GATE_API_PROVIDERS:-}" ]]
+then
+  for route in "${diagnostic_web_routes[@]}"; do
+    IFS='|' read -r provider cli_provider source <<<"$route"
+    run_diagnostic_route "$provider" "$cli_provider" "$source"
+  done
+fi
 if [[ "${CODEXBAR_ROUTE_GATE_WEB_ONLY:-0}" != 1 && \
-  "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" != 1 ]]
+  "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" != 1 && \
+  -z "${CODEXBAR_ROUTE_GATE_API_PROVIDERS:-}" ]]
 then
   for route in "${open_code_bridge_routes[@]}"; do
     IFS='|' read -r provider environment_key extra_environment <<<"$route"

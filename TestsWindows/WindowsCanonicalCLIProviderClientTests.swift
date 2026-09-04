@@ -46,7 +46,6 @@
         executablePath: "/opt/codexbar/bin/codexbar",
         providerID: "gemini",
         windowsDirectory: "C:\\Windows")
-
       #expect(
         invocation.executablePath.replacingOccurrences(of: "\\", with: "/").hasSuffix(
           "Windows/System32/wsl.exe"))
@@ -57,6 +56,26 @@
         ])
       #expect(invocation.distribution == "Ubuntu-24.04")
       #expect(invocation.executionMode == .usage)
+      #expect(invocation.processTimeout == 45)
+    }
+
+    @Test("automatic diagnostic WSL invocation uses exact argv and longer timeout")
+    func buildsAutomaticDiagnosticInvocation() {
+      let invocation = WindowsCanonicalCLIInvocation.wsl(
+        distribution: "Ubuntu",
+        executablePath: "/opt/codexbar/CodexBarCLI",
+        providerID: "manus",
+        executionMode: .diagnose,
+        windowsDirectory: "C:\\Windows")
+
+      #expect(
+        invocation.arguments == [
+          "-d", "Ubuntu", "--", "/opt/codexbar/CodexBarCLI",
+          "diagnose", "--provider", "manus", "--format", "json", "--redact",
+        ])
+      #expect(invocation.standardInput == nil)
+      #expect(invocation.executionMode == .diagnose)
+      #expect(invocation.processTimeout == 90)
     }
 
     @Test("staged WSL invocation defaults to usage and supports exact diagnose mode")
@@ -80,10 +99,14 @@
         windowsDirectory: "C:\\Windows")
 
       #expect(usage.executionMode == .usage)
-      #expect(Array(usage.arguments.suffix(2)) == ["--mode", "usage"])
+      #expect(usage.arguments.contains("50"))
+      #expect(usage.processTimeout == 60)
+      #expect(Array(usage.arguments.suffix(4)) == ["--source", "web", "--mode", "usage"])
       #expect(usage.allowsRetry)
       #expect(diagnose.executionMode == .diagnose)
-      #expect(Array(diagnose.arguments.suffix(2)) == ["--mode", "diagnose"])
+      #expect(diagnose.arguments.contains("75"))
+      #expect(diagnose.processTimeout == 90)
+      #expect(Array(diagnose.arguments.suffix(4)) == ["--source", "web", "--mode", "diagnose"])
       #expect(diagnose.allowsRetry)
     }
 
@@ -148,6 +171,33 @@
 
       #expect(snapshot.availability == .available)
       #expect(snapshot.balanceText == "12 credits remaining")
+      #expect(runner.attemptCount == 2)
+      #expect(delays.count == 1)
+    }
+
+    @Test("diagnostic retry remains bounded to one retry within the mode-specific budget")
+    func boundsDiagnosticRetry() async {
+      let runner = CanonicalRunnerState([
+        .failure(.commandFailed(1)),
+        .failure(.commandFailed(1)),
+      ])
+      let delays = CanonicalDelayState()
+      let client = WindowsCanonicalCLIProviderClient(
+        processRunner: { _, _, timeout, _, _, _ in
+          #expect(timeout == 90)
+          return try runner.next()
+        },
+        retryDelay: { delays.record() })
+      let invocation = WindowsCanonicalCLIInvocation.wsl(
+        distribution: "Ubuntu",
+        executablePath: "/opt/codexbar/bundled/CodexBarCLI",
+        providerID: "manus",
+        executionMode: .diagnose,
+        windowsDirectory: "C:\\Windows")
+
+      let snapshot = await client.fetch(provider: .manus, invocation: invocation)
+
+      #expect(snapshot.availability == .unavailable)
       #expect(runner.attemptCount == 2)
       #expect(delays.count == 1)
     }
