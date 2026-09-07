@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Temporary release-policy exception for FoundationNetworking issue 5412.
+# Standalone runs remain strict; CI runs the deferred route in a separate step.
+commandcode_policy="${CODEXBAR_ROUTE_GATE_COMMANDCODE:-strict}"
+case "$commandcode_policy" in
+  strict|defer|isolated) ;;
+  *) echo "invalid CommandCode route policy" >&2; exit 64 ;;
+esac
+
 if [[ $# -ne 1 ]]; then
   echo "usage: $0 <CodexBarStagingLauncher>" >&2
   exit 64
@@ -231,10 +239,6 @@ run_invocation() {
     >"$stdout" 2>"$stderr"
   local status=$?
   set -e
-  if [[ $status -eq 124 || $status -eq 125 || $status -eq 126 || $status -eq 127 || $status -ge 128 ]]; then
-    echo "$label could not complete the route gate (status $status)" >&2
-    return 1
-  fi
   if [[ ! -s "$trace" ]]; then
     echo "$label produced no exec trace" >&2
     if [[ -s "$stderr" ]]; then
@@ -247,6 +251,14 @@ run_invocation() {
     return 1
   fi
   assert_exec_evidence "$label" "$mode" "$trace" "$stdout" "$stderr"
+  if [[ $status -eq 124 && "${commandcode_policy:-strict}" == isolated &&
+    "$label" == commandcode-web-present && "$provider" == commandcode &&
+    "$source" == web && "$mode" == usage && -z "$credential_environment" ]]; then
+    commandcode_present_timed_out=true
+  elif [[ $status -eq 124 || $status -eq 125 || $status -eq 126 || $status -eq 127 || $status -ge 128 ]]; then
+    echo "$label could not complete the route gate (status $status)" >&2
+    return 1
+  fi
 }
 
 run_route() {
@@ -266,12 +278,26 @@ run_web_route() {
   local cli_provider="$2"
   local source="$3"
   local label="$provider-$source"
+  commandcode_present_timed_out=false
   run_invocation "$label-present" "$cli_provider" "$source" \
     "$(config_for "$provider" "$source" true)" usage ""
   run_invocation "$label-missing" "$cli_provider" "$source" \
     "$(config_for "$provider" "$source" false)" usage ""
   assert_structured_credential_evidence \
-    "$provider" "$source" "$work/$label-present.stdout" "$work/$label-missing.stdout"
+    "$provider" "$source" "$work/$label-present.stdout" "$work/$label-missing.stdout" \
+    "$commandcode_present_timed_out"
+  if [[ "$commandcode_present_timed_out" == true ]]; then
+    if grep -R -F -q -- "$canary" "$work"; then
+      echo "CommandCode staged credential was copied into a named gate artifact" >&2
+      return 1
+    fi
+    local warning='CommandCode offline cancellation timed out (known Swift issue 5412). Credential-present behavior is UNVERIFIED, not passed; isolation and missing-credential checks passed.'
+    echo "::warning title=CommandCode known timeout::$warning"
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+      printf '### CommandCode: known timeout (not a passed route)\n\n%s\n\n%s\n' \
+        "$warning" 'https://github.com/swiftlang/swift-corelibs-foundation/issues/5412' >> "$GITHUB_STEP_SUMMARY"
+    fi
+  fi
 }
 
 run_diagnostic_route() {
@@ -338,12 +364,16 @@ assert_structured_credential_evidence() {
   local source="$2"
   local present="$3"
   local missing="$4"
-  python3 - "$provider" "$source" "$present" "$missing" <<'PY'
+  python3 - "$provider" "$source" "$present" "$missing" "${5:-false}" <<'PY'
 import json
 import re
 import sys
 
-provider, source, present_path, missing_path = sys.argv[1:]
+provider, source, present_path, missing_path, present_timed_out = sys.argv[1:]
+if present_timed_out not in {"true", "false"} or (
+    present_timed_out == "true" and (provider, source) != ("commandcode", "web")
+):
+    raise SystemExit("invalid isolated timeout evidence request")
 
 def payload(path, role, require_provider_layer):
     try:
@@ -374,7 +404,7 @@ def payload(path, role, require_provider_layer):
         raise SystemExit(f"{provider}:{source} {role} produced neither usage, credits, nor provider error")
     return item
 
-present = payload(present_path, "credential-present", True)
+present = None if present_timed_out == "true" else payload(present_path, "credential-present", True)
 missing = payload(missing_path, "credential-missing", False)
 missing_error = missing.get("error")
 if not isinstance(missing_error, dict):
@@ -395,6 +425,9 @@ if not missing_pattern.search(missing_error["message"]) and not missing_web_supp
     raise SystemExit(
         f"{provider}:{source} missing fixture did not report a recognizable missing-credential outcome"
     )
+
+if present is None:
+    raise SystemExit(0)  # Only missing-control evidence; never a successful present-route proof.
 
 present_error = present.get("error")
 if isinstance(present_error, dict) and missing_pattern.search(present_error["message"]):
@@ -568,6 +601,13 @@ open_code_bridge_routes=(
 export launcher cli work canary namespace_mode original_uid original_gid
 export env_path strace_path timeout_path unshare_path sudo_path setpriv_path
 export -f config_for assert_exec_evidence assert_structured_credential_evidence run_invocation run_route
+if [[ "$commandcode_policy" == isolated ]]; then
+  run_web_route commandcode commandcode web
+  if [[ "$commandcode_present_timed_out" != true ]]; then
+    echo "isolated CommandCode route-isolation gate passed (no timeout)"
+  fi
+  exit 0
+fi
 if [[ "${CODEXBAR_ROUTE_GATE_WEB_ONLY:-0}" != 1 ]]; then
   selected_api_providers=("${manual_api_providers[@]}")
   if [[ -n "${CODEXBAR_ROUTE_GATE_API_PROVIDERS:-}" ]]; then
@@ -611,6 +651,10 @@ if [[ "${CODEXBAR_ROUTE_GATE_EXPANDED_ONLY:-0}" != 1 && \
 then
   for route in "${manual_web_routes[@]}"; do
     IFS='|' read -r provider cli_provider source <<<"$route"
+    if [[ "$provider" == commandcode && "$commandcode_policy" == defer ]]; then
+      echo "CommandCode deferred to the separate isolated check; not counted as passed here"
+      continue
+    fi
     run_web_route "$provider" "$cli_provider" "$source"
   done
 fi
@@ -636,4 +680,8 @@ then
   done
 fi
 
-echo "unchanged CodexBar CLI route-isolation gate passed"
+if [[ "$commandcode_policy" == defer ]]; then
+  echo "unchanged CodexBar CLI route-isolation gate passed excluding separately checked CommandCode"
+else
+  echo "unchanged CodexBar CLI route-isolation gate passed"
+fi

@@ -431,12 +431,28 @@ jobs:
       - name: Verify unchanged CLI route isolation
         if: matrix.name == 'linux-musl-x64'
         shell: bash
+        env:
+          CODEXBAR_ROUTE_GATE_COMMANDCODE: defer
         run: |
           set -euo pipefail
           if ! command -v strace >/dev/null 2>&1; then
             sudo apt-get update -qq
             sudo apt-get install -y --no-install-recommends strace
           fi
+          bash TestsLinux/StagingLauncher/test_unchanged_cli_routes.sh \
+            "${{ steps.pkg.outputs.out_dir }}/CodexBarStagingLauncher-linux-musl-x86_64"
+
+      # Remove the narrow timeout quarantine when the adopted stable Swift includes
+      # https://github.com/swiftlang/swift-corelibs-foundation/pull/5417.
+      # No continue-on-error: all security/control failures still block packaging.
+      - name: Verify CommandCode separately (known cancellation timeout quarantine)
+        if: matrix.name == 'linux-musl-x64'
+        shell: bash
+        env:
+          CODEXBAR_ROUTE_GATE_COMMANDCODE: isolated
+        run: |
+          set -euo pipefail
+          bash TestsLinux/StagingLauncher/test_commandcode_quarantine.sh
           bash TestsLinux/StagingLauncher/test_unchanged_cli_routes.sh \
             "${{ steps.pkg.outputs.out_dir }}/CodexBarStagingLauncher-linux-musl-x86_64"
 
