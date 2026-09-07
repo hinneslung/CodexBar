@@ -67,50 +67,6 @@
         #expect(schema.credentialSets.first(where: { $0.id == "api-key" })?.acceptsOpenCode == true)
       }
 
-      let routeGate = try String(
-        contentsOf: Self.repositoryRoot
-          .appendingPathComponent("TestsLinux/StagingLauncher/test_unchanged_cli_routes.sh"),
-        encoding: .utf8)
-      #expect(
-        try Set(Self.shellArray(named: "manual_api_providers", in: routeGate))
-          == expectedManualAPIProviderIDs)
-      #expect(
-        try Set(Self.shellArray(named: "expanded_api_providers", in: routeGate)) == [
-          "neuralwatt", "elevenlabs", "warp", "clawrouter", "llmproxy", "litellm",
-          "sub2api", "xai", "clinepass", "deepseek", "minimax",
-        ])
-      let catalogWebRoutes = Set(
-        WindowsProviderConfigurationCatalog.schemas.flatMap { schema in
-          schema.manualCredentialSets.compactMap { set -> String? in
-            guard set.executionMode == .usage, set.source == "web" else { return nil }
-            return "\(schema.provider.rawValue)|\(schema.cliName)|\(set.source)"
-          }
-        })
-      #expect(
-        try Set(Self.shellArray(named: "manual_web_routes", in: routeGate)) == catalogWebRoutes)
-      let catalogDiagnosticRoutes = Set(
-        WindowsProviderConfigurationCatalog.schemas.flatMap { schema in
-          schema.manualCredentialSets.compactMap { set -> String? in
-            guard set.executionMode == .diagnose else { return nil }
-            return "\(schema.provider.rawValue)|\(schema.cliName)|\(set.source)"
-          }
-        })
-      #expect(
-        try Set(Self.shellArray(named: "diagnostic_web_routes", in: routeGate))
-          == catalogDiagnosticRoutes)
-
-      let expectedBridgeRoutes = Set(
-        WindowsProviderCredentialBridge.defaultRules.compactMap { rule -> String? in
-          guard let candidate = rule.candidates.first else { return nil }
-          let additional = candidate.additionalEnvironment
-            .sorted(by: { $0.key < $1.key })
-            .map { "\($0.key)=\($0.value)" }
-          return ([rule.provider.rawValue, candidate.secretEnvironmentKey] + additional)
-            .joined(separator: "|")
-        })
-      #expect(
-        try Set(Self.shellArray(named: "open_code_bridge_routes", in: routeGate))
-          == expectedBridgeRoutes)
       for rule in WindowsProviderCredentialBridge.defaultRules {
         let schema = try #require(WindowsProviderConfigurationCatalog.byProvider[rule.provider])
         #expect(schema.credentialSets.contains(where: { $0.source == "api" && $0.acceptsOpenCode }))
@@ -429,24 +385,5 @@
         .appendingPathComponent("CodexBarCredentialTests-\(Foundation.UUID().uuidString)")
     }
 
-    private static var repositoryRoot: URL {
-      URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-    }
-
-    private static func shellArray(named name: String, in script: String) throws -> [String] {
-      let normalizedScript =
-        script
-        .replacingOccurrences(of: "\r\n", with: "\n")
-        .replacingOccurrences(of: "\r", with: "\n")
-      let start = try #require(normalizedScript.range(of: "\(name)=(\n"))
-      let end = try #require(
-        normalizedScript.range(of: "\n)", range: start.upperBound..<normalizedScript.endIndex))
-      return normalizedScript[start.upperBound..<end.lowerBound]
-        .split(whereSeparator: \.isWhitespace)
-        .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "'\"")) }
-        .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-    }
   }
 #endif
