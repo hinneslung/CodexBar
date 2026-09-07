@@ -43,7 +43,28 @@ Ordinary GitHub CI builds and runs the Windows portability tests separately on n
 architecture, Swift target triple, PE machine, and Windows GUI subsystem. The native ARM64 job is the
 runtime evidence that cannot be produced by a local AMD64 machine.
 
-## Release archives
+## Installers and portable archives
+
+Download `CodexBar-v<tag>-windows-x86_64-setup.exe` for Intel/AMD x64 Windows or
+`CodexBar-v<tag>-windows-arm64-setup.exe` for Windows on ARM. Each installer is one download containing
+the app, runtime libraries, resources, and its matching WSL CLI. Installation is per user at
+`%LOCALAPPDATA%\Programs\CodexBar` and does not request administrator access. Open CodexBar from the
+Start menu; it then lives in the notification area. To launch at login, use **Run at startup** in
+CodexBar Settings. Silent installation never launches the app automatically.
+
+Provider usage requires a configured WSL distribution. Setup checks for the WSL command and offers
+the [Microsoft WSL setup guide](https://learn.microsoft.com/windows/wsl/install); it does not start a
+distribution or install WSL. Installing CodexBar before completing WSL setup is supported.
+
+Run a newer installer to upgrade the same installation. Setup can close the installed app if it is
+in use. Quit the installed copy from its notification-area menu before uninstalling through Windows
+Settings → Apps; uninstall asks you to quit if that copy is still running. Upgrades and uninstall preserve settings and
+credentials in `%LOCALAPPDATA%\CodexBar`, user-added files, and WSL data. Uninstall removes the startup
+task only if its single executable action points to the copy being uninstalled.
+
+Installers and ZIPs are unsigned. Windows may show a downloaded-app reputation warning. Each download
+has a SHA-256 sidecar. Manual workflow runs expose downloads as GitHub workflow artifacts; they do not
+publish a GitHub release.
 
 GitHub Releases provides two self-contained archives:
 
@@ -57,6 +78,13 @@ Linux-musl WSL CLI and staging launcher, verifies the PE and ELF machines, GUI s
 layout, and app-local Swift and Microsoft runtime DLLs, then smoke-starts the fully extracted archive
 on the same native runner. These ZIPs are currently unsigned because this repository has no configured
 Windows signing identity; Windows may therefore show its downloaded-app reputation warning.
+
+The native Windows release jobs also build an Inno Setup EXE from that verified ZIP. They test silent
+installation, payload hashes, offline startup, replacement during reinstall, uninstall, and startup
+task/data preservation on each native architecture. `Scripts/install_inno_setup.ps1` acquires the
+pinned official compiler with checksum verification. Local packaging accepts its explicit compiler
+path through `Scripts/package_windows_installer.ps1`; Swift and release output locations follow
+`.build/README.md`.
 
 ## Provider engine
 

@@ -595,13 +595,50 @@ jobs:
             }
           }
 
+      - name: Install pinned Inno Setup compiler
+        id: inno
+        shell: pwsh
+        run: |
+          $compiler = & ./Scripts/install_inno_setup.ps1 -DestinationDirectory (Join-Path $env:RUNNER_TEMP 'inno-setup')
+          "compiler=$($compiler.CompilerPath)" >> $env:GITHUB_OUTPUT
+
+      - name: Validate installer packaging rejection paths
+        shell: pwsh
+        run: |
+          & ./TestsLinux/StagingLauncher/test_windows_installer_package.ps1 `
+            -Archive '${{ steps.package.outputs.asset }}' `
+            -AssetArchitecture '${{ matrix.asset-arch }}' `
+            -SafeRefName ($env:RELEASE_TAG -replace '/', '-')
+
+      - name: Build Windows EXE installer
+        id: installer
+        shell: pwsh
+        run: |
+          $installer = & ./Scripts/package_windows_installer.ps1 `
+            -Archive '${{ steps.package.outputs.asset }}' `
+            -AssetArchitecture '${{ matrix.asset-arch }}' `
+            -SafeRefName ($env:RELEASE_TAG -replace '/', '-') `
+            -CompilerPath '${{ steps.inno.outputs.compiler }}' `
+            -OutputDirectory $env:RUNNER_TEMP
+          "asset=$($installer.AssetPath)" >> $env:GITHUB_OUTPUT
+          "checksum=$($installer.ChecksumPath)" >> $env:GITHUB_OUTPUT
+
+      - name: Verify native installer lifecycle
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          & ./TestsLinux/StagingLauncher/test_windows_installer.ps1 `
+            -Installer '${{ steps.installer.outputs.asset }}' `
+            -Archive '${{ steps.package.outputs.asset }}' `
+            -AssetArchitecture '${{ matrix.asset-arch }}'
+
       - name: Upload release assets
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release upload $env:RELEASE_TAG '${{ steps.package.outputs.asset }}' '${{ steps.package.outputs.checksum }}' --clobber
+          gh release upload $env:RELEASE_TAG '${{ steps.package.outputs.asset }}' '${{ steps.package.outputs.checksum }}' '${{ steps.installer.outputs.asset }}' '${{ steps.installer.outputs.checksum }}' --clobber
 
       - name: Upload workflow artifact (manual runs)
         if: github.event_name == 'workflow_dispatch'
@@ -611,6 +648,8 @@ jobs:
           path: |
             ${{ steps.package.outputs.asset }}
             ${{ steps.package.outputs.checksum }}
+            ${{ steps.installer.outputs.asset }}
+            ${{ steps.installer.outputs.checksum }}
 
   update-homebrew-tap:
     runs-on: ubuntu-24.04
