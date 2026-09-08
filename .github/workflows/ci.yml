@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, windows-native-app]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
@@ -213,6 +213,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   swift-test-windows:
+    name: Windows (${{ matrix.asset-arch }})
     strategy:
       fail-fast: false
       matrix:
