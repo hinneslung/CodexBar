@@ -615,6 +615,7 @@ jobs:
         timeout-minutes: 10
         shell: pwsh
         run: |
+          & ./TestsLinux/StagingLauncher/test_windows_installer_cleanup.ps1
           & ./TestsLinux/StagingLauncher/test_windows_installer.ps1 `
             -Installer '${{ steps.installer.outputs.asset }}' `
             -Archive '${{ steps.package.outputs.asset }}' `

@@ -39,6 +39,7 @@ foreach ($name in @('LOCALAPPDATA', 'CODEXBAR_WINDOWS_OFFLINE', 'PATH')) {
 $appProcess = $null
 $taskCreated = $false
 $installCount = 0
+$payloadInstalled = $false
 
 function Invoke-InstallerProcess([string] $Path, [string[]] $Arguments) {
     $process = Start-Process -FilePath $Path -ArgumentList $Arguments -PassThru -WindowStyle Hidden
@@ -50,11 +51,16 @@ function Invoke-InstallerProcess([string] $Path, [string[]] $Arguments) {
 }
 function Install-Payload {
     $script:installCount++
+    # Retain cleanup responsibility even if setup exits after a partial install.
+    $script:payloadInstalled = $true
     Invoke-InstallerProcess $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
         '/CLOSEAPPLICATIONS', '/RESTARTEXITCODE=3010', "/DIR=`"$installDirectory`"", "/LOG=`"$work\setup-$installCount.log`"")
 }
 function Uninstall-Payload {
     Invoke-InstallerProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$work\uninstall.log`"")
+    # Inno may delete its executable asynchronously after success. Its continued existence is
+    # not evidence of an installed payload and must not trigger a second uninstall in finally.
+    $script:payloadInstalled = $false
 }
 function Assert-Payload {
     foreach ($file in Get-ChildItem -LiteralPath $sourceDirectory -Recurse -File) {
@@ -156,7 +162,7 @@ try {
 } finally {
     try {
         if ($null -ne $appProcess -and -not $appProcess.HasExited) { Stop-Process -Id $appProcess.Id -Force }
-        if (Test-Path -LiteralPath $uninstaller) { Uninstall-Payload }
+        if ($payloadInstalled -and (Test-Path -LiteralPath $uninstaller)) { Uninstall-Payload }
     } finally {
         try {
             if ($taskCreated) { Unregister-ScheduledTask -TaskPath '\' -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue }
