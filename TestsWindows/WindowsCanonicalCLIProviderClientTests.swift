@@ -44,6 +44,62 @@
       #expect(snapshot.sourceText == "WSL CLI · Ubuntu")
     }
 
+    @Test
+    func `unread credits stay absent through decoder and presentation`() throws {
+      let snapshot = try Self.decodeCredits(remaining: 0, readFlag: "false")
+      let row = try #require(
+        WindowsDashboardPresentation.make(
+          snapshots: [snapshot], refreshedAt: Date(timeIntervalSince1970: 0), providers: [.codex]
+        ).rows.first)
+
+      #expect(snapshot.balanceText == nil)
+      #expect(snapshot.usedPercent == 18)
+      #expect(snapshot.planText == "Plan: Pro")
+      #expect(row.balanceText.isEmpty)
+      #expect(!row.accessibilityText.contains("credits remaining"))
+      #expect(row.planText == "Plan: Pro")
+    }
+
+    @Test
+    func `read and legacy credits preserve genuine zero balances`() throws {
+      for readFlag: String? in ["true", nil, "null"] {
+        for remaining in [0, 12] {
+          let snapshot = try Self.decodeCredits(remaining: remaining, readFlag: readFlag)
+          let expected = "\(remaining) credits remaining"
+          let row = try #require(
+            WindowsDashboardPresentation.make(
+              snapshots: [snapshot], refreshedAt: Date(timeIntervalSince1970: 0),
+              providers: [.codex]
+            ).rows.first)
+          #expect(snapshot.balanceText == expected)
+          #expect(row.balanceText == expected)
+          #expect(row.accessibilityText.contains(expected))
+        }
+      }
+    }
+
+    @Test
+    func `nonboolean credit read status fails decoding`() {
+      for readFlag in ["0", "\"false\"", "{}"] {
+        #expect(throws: (any Error).self) {
+          try Self.decodeCredits(remaining: 0, readFlag: readFlag)
+        }
+      }
+    }
+
+    private static func decodeCredits(remaining: Int, readFlag: String?) throws
+      -> WindowsProviderSnapshot
+    {
+      let status = readFlag.map { ",\"balanceReadSucceeded\":\($0)" } ?? ""
+      let payload = """
+        [{"provider":"codex","source":"oauth",
+          "usage":{"primary":{"usedPercent":18},"identity":{"loginMethod":"Pro"}},
+          "credits":{"remaining":\(remaining)\(status)}}]
+        """
+      return try WindowsCanonicalCLIProviderClient.decode(
+        data: Data(payload.utf8), requestedProvider: .codex, sourceText: "Ubuntu · OAuth")
+    }
+
     @Test("WSL invocation uses direct arguments without a shell")
     func buildsWSLInvocation() {
       let invocation = WindowsCanonicalCLIInvocation.wsl(

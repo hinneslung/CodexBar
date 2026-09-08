@@ -285,6 +285,21 @@ grep -Fq "Recovered SwiftPM Sparkle test runtime; retrying discovery once." \
   "${TEMP_DIR}/sparkle-recovery.log"
 unset FAKE_SWIFT_BIN_PATH
 
+python3 - "${ROOT_DIR}/Scripts" <<'PY'
+import sys
+from unittest.mock import patch
+
+sys.path.insert(0, sys.argv[1])
+with patch.dict(sys.modules, {"fcntl": None}):
+    import ci_swift_test_by_suite as runner
+
+assert runner.fcntl is None
+with patch.object(runner.subprocess, "run", side_effect=AssertionError("unexpected subprocess")), \
+        patch.object(runner, "Path", side_effect=AssertionError("unexpected filesystem access")):
+    assert runner.repair_sparkle_test_runtime(["swift"]) is False
+print("Unsupported-platform Sparkle repair is side-effect free.")
+PY
+
 python3 "${ROOT_DIR}/Scripts/test_swift_test_process_cleanup.py"
 
 echo "Swift test sharding tests passed."

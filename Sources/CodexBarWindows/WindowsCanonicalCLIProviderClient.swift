@@ -37,7 +37,6 @@ enum WindowsCanonicalCLIError: LocalizedError, Sendable {
     }
   }
 }
-
 struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertible,
   CustomDebugStringConvertible
 {
@@ -172,7 +171,6 @@ struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertib
       executionMode: executionMode)
   }
 }
-
 struct WindowsCanonicalCLIProviderClient: Sendable {
   typealias ProcessRunner =
     @Sendable (
@@ -356,8 +354,9 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
     for extra in payload.usage?.extraRateWindows ?? [] where extra.usageKnown != false {
       Self.append(extra.window, defaultLabel: extra.title, to: &windows)
     }
-    var balanceText = payload.credits.map {
-      "\(Self.number($0.remaining)) credits remaining"
+    var balanceText = payload.credits.flatMap { credits -> String? in
+      guard credits.balanceReadSucceeded != false else { return nil }
+      return "\(Self.number(credits.remaining)) credits remaining"
     }
     let identityText = Self.normalized(payload.usage?.identity?.loginMethod)
     let planText: String?
@@ -687,6 +686,7 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
 
   private struct Credits: Decodable {
     let remaining: Double
+    let balanceReadSucceeded: Bool?
     let updatedAt: Date?
   }
 

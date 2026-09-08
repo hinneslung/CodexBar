@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
-import fcntl
 import os
 from pathlib import Path
 import re
@@ -16,6 +15,11 @@ import sys
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 
 @dataclass(frozen=True)
@@ -511,6 +515,8 @@ def sparkle_runtime_matches_source(destination: Path, source: Path) -> bool:
 
 
 def repair_sparkle_test_runtime(swift_command: list[str]) -> bool:
+    if fcntl is None:
+        return False
     result = subprocess.run(
         [*swift_command, "build", "--show-bin-path"],
         capture_output=True,
