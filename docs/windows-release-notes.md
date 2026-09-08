@@ -18,7 +18,7 @@ First Windows-fork release, based on upstream CodexBar v0.56.8.
 Requires Windows 10/11 and WSL2 with a configured distribution and non-root default user.
 Install the EXE and open CodexBar from the Start menu, or extract the entire portable ZIP and run
 `CodexBar.exe`. Enable and configure providers in Settings. See the
-[Windows guide](https://github.com/hinneslung/CodexBar/blob/v0.56.8-windows.1/docs/windows.md).
+[Windows guide](https://github.com/hinneslung/CodexBar-for-Windows/blob/v0.56.8-windows.1/docs/windows.md).
 
 ## Limitations
 

@@ -14,11 +14,11 @@ concurrency:
 
 jobs:
   sync:
-    if: github.repository == 'hinneslung/CodexBar'
+    if: github.repository == 'hinneslung/CodexBar-for-Windows'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Fast-forward mirror only
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh repo sync hinneslung/CodexBar --source steipete/CodexBar --branch main
+        run: gh repo sync hinneslung/CodexBar-for-Windows --source steipete/CodexBar --branch main
