@@ -263,7 +263,9 @@ jobs:
 
       - name: Windows portability tests
         shell: pwsh
-        run: swift test -Xswiftc -warnings-as-errors
+        # Avoid unrelated blocking process fixtures starving short async fixture deadlines.
+        # Tests that verify concurrency still create their own concurrent tasks.
+        run: swift test --no-parallel -Xswiftc -warnings-as-errors
 
       - name: Verify native Windows GUI executable
         shell: pwsh

@@ -498,7 +498,8 @@ jobs:
 
       - name: Windows portability tests
         shell: pwsh
-        run: swift test -Xswiftc -warnings-as-errors
+        # Match native CI: isolate fixture scheduling, not the concurrency exercised inside each test.
+        run: swift test --no-parallel -Xswiftc -warnings-as-errors
 
       - name: Download Linux CLI payload
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -615,6 +616,7 @@ jobs:
         timeout-minutes: 10
         shell: pwsh
         run: |
+          & ./TestsLinux/StagingLauncher/test_windows_installer_cleanup.ps1
           & ./TestsLinux/StagingLauncher/test_windows_installer.ps1 `
             -Installer '${{ steps.installer.outputs.asset }}' `
             -Archive '${{ steps.package.outputs.asset }}' `
