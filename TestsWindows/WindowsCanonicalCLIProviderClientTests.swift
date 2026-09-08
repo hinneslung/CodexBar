@@ -68,7 +68,8 @@
           let expected = "\(remaining) credits remaining"
           let row = try #require(
             WindowsDashboardPresentation.make(
-              snapshots: [snapshot], refreshedAt: Date(timeIntervalSince1970: 0),
+              snapshots: [snapshot],
+              refreshedAt: Date(timeIntervalSince1970: 0),
               providers: [.codex]
             ).rows.first)
           #expect(snapshot.balanceText == expected)
