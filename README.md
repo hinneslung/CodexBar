@@ -6,7 +6,7 @@
 
 This fork of [steipete/CodexBar](https://github.com/steipete/CodexBar) adds a native Windows tray app
 for x64 and ARM64. Download the matching installer from this fork's
-[build artifacts](https://github.com/hinneslung/CodexBar/actions/workflows/release-cli.yml), install it,
+[build artifacts](https://github.com/hinneslung/CodexBar-for-Windows/actions/workflows/release-cli.yml), install it,
 and enable providers in Settings. WSL2 is required; see the [Windows guide](docs/windows.md).
 
 The Windows UI reuses the unchanged upstream CLI in WSL rather than duplicating provider logic.
@@ -49,8 +49,8 @@ popup with Overview and provider detail views.
 Download: <https://github.com/steipete/CodexBar/releases>
 
 The link above is for upstream macOS/Linux releases. Windows packages come from
-[this fork](https://github.com/hinneslung/CodexBar/releases) or its
-[build artifacts](https://github.com/hinneslung/CodexBar/actions/workflows/release-cli.yml).
+[this fork](https://github.com/hinneslung/CodexBar-for-Windows/releases) or its
+[build artifacts](https://github.com/hinneslung/CodexBar-for-Windows/actions/workflows/release-cli.yml).
 Windows archives are `CodexBar-v<tag>-windows-x86_64.zip` and
 `CodexBar-v<tag>-windows-arm64.zip`. Extract the whole folder and start `CodexBar.exe`. The matching
 Linux CLI is included and installed into CodexBar's private WSL data directory automatically when no
