@@ -63,8 +63,11 @@ credentials in `%LOCALAPPDATA%\CodexBar`, user-added files, and WSL data. Uninst
 task only if its single executable action points to the copy being uninstalled.
 
 Installers and ZIPs are unsigned. Windows may show a downloaded-app reputation warning. Each download
-has a SHA-256 sidecar. Manual workflow runs expose downloads as GitHub workflow artifacts; they do not
-publish a GitHub release.
+has a SHA-256 sidecar. Manual workflow runs expose separate GitHub workflow artifacts named
+`codexbar-windows-<architecture>-installer` and `codexbar-windows-<architecture>-portable`, where
+`<architecture>` is `x86_64` or `arm64`. Each contains only that package and its checksum. GitHub Actions
+wraps each artifact download in a ZIP; extract it to access the installer EXE or portable ZIP. Manual
+runs do not publish a GitHub release.
 
 GitHub Releases provides two self-contained archives:
 
