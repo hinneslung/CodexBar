@@ -1,6 +1,22 @@
 import Foundation
 import WinSDK
 
+/// Owned by the UI thread; the saved checkbox value changes only after registration succeeds.
+struct WindowsStartupChangeState {
+  private(set) var pendingValue: Bool?
+
+  mutating func begin(currentValue: Bool) -> Bool? {
+    guard self.pendingValue == nil else { return nil }
+    let value = !currentValue
+    self.pendingValue = value
+    return value
+  }
+
+  mutating func finish() {
+    self.pendingValue = nil
+  }
+}
+
 enum WindowsStartupTaskError: Error, Equatable, LocalizedError {
   case executableUnavailable
   case powershellUnavailable

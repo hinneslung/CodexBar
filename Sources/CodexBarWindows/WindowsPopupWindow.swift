@@ -119,6 +119,7 @@ final class WindowsPopupWindow {
   private let providerLogoAtlas = WindowsProviderLogoAtlas.load()
   private var activationPolicy = WindowsPopupActivationPolicy()
   private var refreshAnimationFrame = 0
+  private var isStartupChangePending = false
 
   init(instance: HINSTANCE?) {
     self.instance = instance
@@ -281,6 +282,12 @@ final class WindowsPopupWindow {
       self.updateRefreshIntervalControlText()
     }
     self.resizeForCurrentPage()
+    _ = InvalidateRect(self.window, nil, false)
+  }
+
+  func setStartupChangePending(_ pending: Bool) {
+    self.isStartupChangePending = pending
+    self.updateRefreshAnimationTimer()
     _ = InvalidateRect(self.window, nil, false)
   }
 
@@ -488,6 +495,9 @@ final class WindowsPopupWindow {
         self.refreshAnimationFrame = WindowsSpinnerPresentation.nextFrame(
           after: self.refreshAnimationFrame)
         if let window = self.window {
+          if self.isStartupChangePending && self.page == .settings {
+            _ = InvalidateRect(window, nil, false)
+          }
           var client = RECT()
           if GetClientRect(window, &client) {
             var refreshRect = self.refreshIndicatorRect(client: client)
@@ -872,6 +882,7 @@ final class WindowsPopupWindow {
       client: client,
       rect: startupRect,
       isOn: self.configuration.runAtStartup,
+      isPending: self.isStartupChangePending,
       title: "Run at startup",
       subtitle: "Start CodexBar when you sign in to Windows",
       action: .toggleRunAtStartup)
@@ -1098,6 +1109,7 @@ final class WindowsPopupWindow {
     client: RECT,
     rect: RECT,
     isOn: Bool,
+    isPending: Bool = false,
     title: String,
     subtitle: String,
     action: Action
@@ -1119,7 +1131,15 @@ final class WindowsPopupWindow {
       radius: self.scaled(4),
       fill: isOn ? WindowsDashboardPalette.sageSurface : WindowsDashboardPalette.surface,
       border: isOn ? WindowsDashboardPalette.sage : WindowsDashboardPalette.border)
-    if isOn {
+    if isPending {
+      WindowsDashboardDrawing.progressRing(
+        dc: dc,
+        rect: toggleRect,
+        diameter: self.scaled(14),
+        frame: self.refreshAnimationFrame,
+        activeColor: WindowsDashboardPalette.secondaryText,
+        inactiveColor: WindowsDashboardPalette.disabledText)
+    } else if isOn {
       WindowsDashboardDrawing.text(
         "✓",
         dc: dc,
@@ -1150,7 +1170,7 @@ final class WindowsPopupWindow {
       color: WindowsDashboardPalette.captionText,
       font: self.secondaryFont,
       format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS))
-    if let hitRect = self.contentHitRect(rect, client: client) {
+    if !isPending, let hitRect = self.contentHitRect(rect, client: client) {
       self.hitTargets.append(HitTarget(rect: hitRect, action: action))
     }
   }
@@ -2237,6 +2257,7 @@ final class WindowsPopupWindow {
       WindowsDashboardDrawing.progressRing(
         dc: dc,
         rect: refreshRect,
+        diameter: self.scaled(18),
         frame: self.refreshAnimationFrame,
         activeColor: WindowsDashboardPalette.secondaryText,
         inactiveColor: WindowsDashboardPalette.disabledText)
@@ -2800,7 +2821,7 @@ final class WindowsPopupWindow {
 
   private func updateRefreshAnimationTimer() {
     guard let window = self.window else { return }
-    if self.presentation.isRefreshing {
+    if self.presentation.isRefreshing || self.isStartupChangePending {
       _ = SetTimer(
         window,
         Self.refreshAnimationTimerID,

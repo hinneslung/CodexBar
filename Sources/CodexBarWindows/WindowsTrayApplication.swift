@@ -96,6 +96,7 @@ final class WindowsTrayApplication {
   private static let refreshCompletedMessage = UINT(WM_APP + 2)
   private static let trayAddCompletedMessage = UINT(WM_APP + 3)
   private static let configurationTaskCompletedMessage = UINT(WM_APP + 4)
+  private static let startupTaskCompletedMessage = UINT(WM_APP + 5)
   static let addTrayIconFlags = UINT(NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP)
   static let updateTrayTooltipFlags = UINT(NIF_TIP | NIF_SHOWTIP)
 
@@ -119,6 +120,7 @@ final class WindowsTrayApplication {
   private var refreshGeneration: UInt64 = 0
   private var refreshTask: Task<Void, Never>?
   private var credentialMutationRequestIDs = Set<Foundation.UUID>()
+  private var startupChange = WindowsStartupChangeState()
   private var trayIconAdded = false
   private var isAddingTrayIcon = false
   private var trayActivationGate = WindowsTrayActivationGate()
@@ -231,6 +233,9 @@ final class WindowsTrayApplication {
       return 0
     case Self.configurationTaskCompletedMessage:
       self.consumeConfigurationTaskResult()
+      return 0
+    case Self.startupTaskCompletedMessage:
+      self.completeStartupChange(succeeded: wParam != 0, isRollback: lParam != 0)
       return 0
     case UINT(WM_DESTROY):
       self.removeTrayIcon()
@@ -707,20 +712,46 @@ final class WindowsTrayApplication {
   }
 
   func toggleRunAtStartup() {
-    let previous = self.configuration.runAtStartup
-    let enabled = !previous
-    do {
-      try WindowsStartupTask.setEnabled(enabled)
-    } catch {
-      self.showStartupError("CodexBar could not update the Windows startup task.")
-      return
+    guard let enabled = self.startupChange.begin(currentValue: self.configuration.runAtStartup)
+    else { return }
+    self.popup.setStartupChangePending(true)
+    self.performStartupChange(enabled: enabled, isRollback: false)
+  }
+
+  private func performStartupChange(enabled: Bool, isRollback: Bool) {
+    let window = WindowsWindowHandleBox(self.messageWindow)
+    Task.detached(priority: .utility) { @Sendable [window] in
+      let succeeded: Bool
+      do {
+        try WindowsStartupTask.setEnabled(enabled)
+        succeeded = true
+      } catch {
+        succeeded = false
+      }
+      _ = PostMessageW(
+        window.value, Self.startupTaskCompletedMessage, succeeded ? 1 : 0, isRollback ? 1 : 0)
     }
-    self.configuration.runAtStartup = enabled
-    guard self.saveConfiguration() else {
-      self.configuration.runAtStartup = previous
-      try? WindowsStartupTask.setEnabled(previous)
-      self.popup.updateConfiguration(self.configuration)
-      return
+  }
+
+  private func completeStartupChange(succeeded: Bool, isRollback: Bool) {
+    guard let enabled = self.startupChange.pendingValue else { return }
+    if succeeded && !isRollback {
+      self.configuration.runAtStartup = enabled
+      if !self.saveConfiguration() {
+        self.configuration.runAtStartup = !enabled
+        self.popup.updateConfiguration(self.configuration)
+        // Rollback can also take seconds; keep it off the UI thread and keep the toggle busy.
+        self.performStartupChange(enabled: !enabled, isRollback: true)
+        return
+      }
+    }
+    self.startupChange.finish()
+    self.popup.setStartupChangePending(false)
+    if !succeeded {
+      self.showStartupError(
+        isRollback
+          ? "CodexBar could not restore the previous Windows startup task. Check Run at startup again."
+          : "CodexBar could not update the Windows startup task.")
     }
   }
 

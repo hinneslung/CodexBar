@@ -72,6 +72,23 @@ enum WindowsSpinnerPresentation {
   static func nextFrame(after frame: Int) -> Int {
     (frame + 1) % self.frameCount
   }
+
+  /// The hit target may be much larger than the icon. Scale the artwork once, from its
+  /// explicit pixel diameter, including fractional DPI scales rather than integer jumps.
+  static func dotRects(in rect: RECT, diameter: Int32) -> [RECT] {
+    let size = max(0, min(diameter, rect.right - rect.left, rect.bottom - rect.top))
+    guard size > 0 else { return [] }
+    let left = rect.left + (rect.right - rect.left - size) / 2
+    let top = rect.top + (rect.bottom - rect.top - size) / 2
+    let scale = Double(size) / 18
+    return self.dotOffsets.map { offset in
+      RECT(
+        left: left + Int32((Double(offset.x + 7) * scale).rounded()),
+        top: top + Int32((Double(offset.y + 7) * scale).rounded()),
+        right: left + Int32((Double(offset.x + 11) * scale).rounded()),
+        bottom: top + Int32((Double(offset.y + 11) * scale).rounded()))
+    }
+  }
 }
 
 enum WindowsDashboardDrawing {
@@ -127,24 +144,21 @@ enum WindowsDashboardDrawing {
   static func progressRing(
     dc: HDC?,
     rect: RECT,
+    diameter: Int32,
     frame: Int,
     activeColor: COLORREF,
     inactiveColor: COLORREF
   ) {
-    let centerX = (rect.left + rect.right) / 2
-    let centerY = (rect.top + rect.bottom) / 2
-    let scale = max(1, min(rect.right - rect.left, rect.bottom - rect.top) / 18)
     let oldPen = SelectObject(dc, GetStockObject(Int32(NULL_PEN)))
-    for (index, offset) in WindowsSpinnerPresentation.dotOffsets.enumerated() {
+    for (index, dot) in WindowsSpinnerPresentation.dotRects(in: rect, diameter: diameter)
+      .enumerated()
+    {
       let color =
         index == frame % WindowsSpinnerPresentation.frameCount
         ? activeColor : inactiveColor
       guard let brush = CreateSolidBrush(color) else { continue }
       let oldBrush = SelectObject(dc, brush)
-      let x = centerX + offset.x * scale
-      let y = centerY + offset.y * scale
-      let radius = max(1, scale * 2)
-      _ = Ellipse(dc, x - radius, y - radius, x + radius + 1, y + radius + 1)
+      _ = Ellipse(dc, dot.left, dot.top, dot.right, dot.bottom)
       if let oldBrush { _ = SelectObject(dc, oldBrush) }
       _ = DeleteObject(brush)
     }
