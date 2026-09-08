@@ -153,6 +153,8 @@ enum WindowsWSLDefaultUserHome {
         self.directory(distributionName: distributionName)?
             .appendingPathComponent(".local", isDirectory: true)
             .appendingPathComponent("share", isDirectory: true)
+            // Provider-specific by design: OpenCode owns this on-disk auth.json path; discovery must use its exact
+            // directory name.
             .appendingPathComponent("opencode", isDirectory: true)
             .appendingPathComponent("auth.json", isDirectory: false)
     }

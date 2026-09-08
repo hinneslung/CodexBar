@@ -191,6 +191,8 @@ enum WindowsProviderConfigurationCatalog {
     /// Providers whose upstream descriptor has a reviewed non-manual route through the provider's
     /// CLI, app-owned authentication state, or local service. Automatic selection alone is not evidence.
     static let providerAppOrCLIEvidence: [WindowsProviderID: ProviderAppOrCLIEvidence] = [
+        // Provider-specific by design: Record reviewed provider-owned authentication routes as data for the shared
+        // Windows renderer.
         .amp: .providerCLI,
         .antigravity: .providerCLI,
         .augment: .providerCLI,
@@ -247,6 +249,8 @@ enum WindowsProviderConfigurationCatalog {
 
     /// Manual API routes proven to be consumed by the unchanged release CLI.
     static let manualAPIProviderIDs: Set<WindowsProviderID> = [
+        // Provider-specific by design: Declare proven manual routes and unsupported-platform explanations for the
+        // unchanged Linux CLI.
         .aiAnd, .alibaba, .amp, .azureOpenAI, .chutes, .claude, .codebuff, .copilot,
         .crof, .deepgram, .deepInfra, .doubao, .elevenLabs, .factory, .fireworks, .groq, .ibmBob,
         .kilo, .kimi, .liteLLM, .llmProxy, .moonshot, .neuralwatt, .ollama, .openai,
@@ -375,6 +379,8 @@ enum WindowsProviderConfigurationCatalog {
         validation: .secret)
 
     static let schemas: [WindowsProviderConfigurationSchema] = [
+        // Provider-specific by design: Declare upstream-consumed API/browser credential schemas without adding Windows
+        // provider fetchers.
         Self.apiSchema(.aiAnd, "aiand"),
         Self.apiSchema(.alibaba, "alibaba-coding-plan"),
         Self.apiSchema(
@@ -418,6 +424,8 @@ enum WindowsProviderConfigurationCatalog {
                     required: true,
                     validation: .nonempty),
             ]),
+        // Provider-specific by design: Mirror upstream credential field contracts and capture policies in the shared
+        // Windows schema.
         Self.apiSchema(.chutes, "chutes"),
         Self.apiSchema(.claude, "claude"),
         Self.apiSchema(.clawRouter, "clawrouter"),
@@ -460,6 +468,8 @@ enum WindowsProviderConfigurationCatalog {
             additionalSets: [
                 Self.browserSet(site: "grok.com", hosts: ["grok.com"]),
             ]),
+        // Provider-specific by design: Declare local endpoint companions and diagnostic browser routes consumed by the
+        // unchanged CLI.
         Self.apiSchema(.ibmBob, "ibmbob"),
         Self.apiSchema(.kilo, "kilo"),
         Self.apiSchema(.kimi, "kimi"),
@@ -486,6 +496,8 @@ enum WindowsProviderConfigurationCatalog {
             ]),
         Self.apiSchema(
             .llmProxy,
+            // Provider-specific by design: Mirror proxy endpoint, Coding Plan key and browser cookie requirements in
+            // catalog data.
             "llmproxy",
             companions: [
                 .init(
@@ -526,6 +538,8 @@ enum WindowsProviderConfigurationCatalog {
                 requiredCookieNamePrefixes: ["ory_session_"],
                 requiresAllCookieNames: true,
                 executionMode: .diagnose)),
+        // Provider-specific by design: Declare upstream API and OpenCode/Ollama session shapes for the generic staging
+        // encoder.
         Self.apiSchema(.moonshot, "moonshot"),
         Self.apiSchema(.neuralwatt, "neuralwatt"),
         Self.apiSchema(
@@ -572,6 +586,8 @@ enum WindowsProviderConfigurationCatalog {
                     captureInstructions: Self.captureInstructions(
                         site: "opencode.ai", input: .cookieHeaderOrCURL, cookieRequired: true)),
             ]),
+        // Provider-specific by design: Declare upstream API and browser capture requirements for the shared credential
+        // editor.
         Self.apiSchema(.openRouter, "openrouter"),
         Self.webSchema(
             .perplexity,
@@ -602,6 +618,8 @@ enum WindowsProviderConfigurationCatalog {
             ]),
         Self.webSchema(
             .stepFun,
+            // Provider-specific by design: StepFun consumes Oasis-Token through its upstream region field; expose that
+            // existing contract.
             "stepfun",
             set: .init(
                 id: "session-token",
@@ -622,6 +640,8 @@ enum WindowsProviderConfigurationCatalog {
                 ],
                 executionMode: .diagnose)),
         Self.apiSchema(
+            // Provider-specific by design: Declare upstream session captures and endpoint companions for generic
+            // Windows staging.
             .sakana,
             "sakana",
             additionalSets: [
@@ -666,6 +686,8 @@ enum WindowsProviderConfigurationCatalog {
                 executionMode: .diagnose)),
         Self.apiSchema(
             .xAI,
+            // Provider-specific by design: The upstream xAI management API requires a Team ID companion beside its API
+            // key.
             "xai",
             companions: [
                 .init(
@@ -679,6 +701,8 @@ enum WindowsProviderConfigurationCatalog {
                     validation: .xAITeamID),
             ]),
         Self.webSchema(
+            // Provider-specific by design: Mirror Notion session and remaining API route contracts in the Windows-only
+            // schema.
             .notion,
             "notion",
             set: Self.browserSet(

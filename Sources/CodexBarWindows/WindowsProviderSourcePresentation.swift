@@ -99,6 +99,8 @@ struct WindowsProviderSourcePresentation: Equatable, Sendable {
             return "Browser session"
         case "cli", "provider cli":
             return "Provider CLI"
+        // Provider-specific by design: Normalize the external OpenCode source token to the agreed user-facing product
+        // name.
         case "opencode", "opencode bridge":
             return "OpenCode"
         default:
@@ -145,6 +147,8 @@ struct WindowsProviderSourcePresentation: Equatable, Sendable {
     /// Overrides only upstream source tokens whose generic label would misdescribe the credential.
     /// Provider capability metadata must not replace the source that actually produced a result.
     private static let automaticSourceLabelOverrides: [WindowsProviderID: [String: String]] = [
+        // Provider-specific by design: Bedrock and Wayfinder label provider-owned credentials as API upstream; retain
+        // app/CLI attribution.
         .bedrock: ["api": "Provider app/CLI"],
         .wayfinder: ["api": "Provider app/CLI"],
     ]
@@ -165,6 +169,8 @@ struct WindowsProviderSourcePresentation: Equatable, Sendable {
                 case "api": "API"
                 case "cli": "CLI"
                 case "oauth": "OAuth"
+                // Provider-specific by design: Preserve official OpenAI and OpenCode capitalization when humanizing
+                // upstream source tokens.
                 case "openai": "OpenAI"
                 case "opencode": "OpenCode"
                 default:

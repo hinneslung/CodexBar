@@ -15,6 +15,8 @@ enum WindowsProviderBranding {
 
     /// Matches the intentional resource sharing in the upstream provider descriptors.
     private static let sharedResourceNames: [WindowsProviderID: String] = [
+        // Provider-specific by design: Mirror upstream shared logo assets; the Windows target cannot import Core
+        // descriptors.
         .openai: "ProviderIcon-codex",
         .azureOpenAI: "ProviderIcon-codex",
         .alibabaTokenPlan: "ProviderIcon-alibaba",

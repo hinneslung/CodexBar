@@ -116,6 +116,8 @@ struct WindowsProviderCredentialBridge: Sendable {
     }
 
     static let defaultRules: [Rule] = [
+        // Provider-specific by design: Map OpenCode connection IDs to existing upstream credential contracts in one
+        // declarative bridge.
         .init(provider: .aiAnd, candidates: [.init("aiand", secretEnvironmentKey: "AIAND_API_KEY")]),
         .init(
             provider: .alibaba,
@@ -165,6 +167,8 @@ struct WindowsProviderCredentialBridge: Sendable {
                     additionalEnvironment: ["MOONSHOT_REGION": "china"]),
             ]),
         .init(
+            // Provider-specific by design: Continue OpenCode credential and region mappings consumed by the generic
+            // staging path.
             provider: .ollama, candidates: [.init("ollama-cloud", secretEnvironmentKey: "OLLAMA_API_KEY")]),
         .init(
             provider: .openCodeGo,

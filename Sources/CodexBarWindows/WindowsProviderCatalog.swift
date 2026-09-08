@@ -50,6 +50,8 @@ struct WindowsProviderCatalogEntry: Hashable, Sendable {
 enum WindowsProviderCatalog {
     static let entries: [WindowsProviderCatalogEntry] = [
         .init(
+            // Provider-specific by design: Mirror upstream provider IDs, names and order without linking the macOS/Core
+            // target.
             id: .codex,
             displayName: "Codex",
             searchAliases: ["ChatGPT"]),
@@ -90,6 +92,8 @@ enum WindowsProviderCatalog {
         .init(id: .moonshot, displayName: "Moonshot"),
         .init(id: .amp, displayName: "Amp"),
         .init(id: .t3Chat, displayName: "T3 Chat"),
+        // Provider-specific by design: Continue the upstream registry mirror used by Windows menus and configuration
+        // decoding.
         .init(id: .ollama, displayName: "Ollama"),
         .init(id: .synthetic, displayName: "Synthetic"),
         .init(id: .openRouter, displayName: "OpenRouter"),
@@ -131,6 +135,8 @@ enum WindowsProviderCatalog {
         .init(id: .aiAnd, displayName: "ai&"),
         .init(id: .zoomMate, displayName: "ZoomMate"),
         .init(id: .xAI, displayName: "xAI"),
+        // Provider-specific by design: Retain the upstream Notion registry entry and ordering in the Windows-only
+        // mirror.
         .init(id: .notion, displayName: "Notion AI"),
         .init(id: .ibmBob, displayName: "IBM Bob"),
     ]
@@ -183,6 +189,8 @@ extension WindowsProviderID {
     /// Providers enabled in a fresh Windows configuration. This is presentation policy only;
     /// every provider uses the same canonical CLI runtime.
     static var initiallyEnabledProviders: [Self] {
+        // Provider-specific by design: Fresh installations enable Codex and Claude as the established Windows
+        // presentation default.
         [.codex, .claude]
     }
 
@@ -201,6 +209,7 @@ extension WindowsProviderID {
     /// the exceptions are pinned here so every Windows source uses the same argument mapping.
     var cliName: String {
         switch self {
+        // Provider-specific by design: Map stable Windows IDs to upstream CLI argument aliases and raw-value constants.
         case .abacus: "abacusai"
         case .alibaba: "alibaba-coding-plan"
         case .alibabaTokenPlan: "alibaba-token-plan"
@@ -241,6 +250,8 @@ extension WindowsProviderID {
     static let amp = Self(rawValue: "amp")
     static let t3Chat = Self(rawValue: "t3chat")
     static let ollama = Self(rawValue: "ollama")
+    // Provider-specific by design: Continue the stable raw-value ID definitions required for Windows configuration
+    // compatibility.
     static let synthetic = Self(rawValue: "synthetic")
     static let warp = Self(rawValue: "warp")
     static let openRouter = Self(rawValue: "openrouter")
