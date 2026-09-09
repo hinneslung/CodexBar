@@ -1,259 +1,114 @@
-# Windows
+# Windows user guide
 
-CodexBar for Windows is a notification-area application with a compact popup. Release archives
-contain `CodexBar.exe`, its Swift runtime and resources, and the unchanged upstream Linux `codexbar`
-CLI used inside WSL as the provider engine.
+- [Download](https://github.com/hinneslung/CodexBar-for-Windows/releases/latest) · [README](../README.md) · [Developer guide](windows-development.md)
+- **WSL2 is required for provider requests.** The native Windows app uses the original, unchanged CodexBar CLI inside WSL. Installers and portable ZIPs include the matching CLI and runtime libraries.
 
-The Overview shows every enabled provider in configured order. Click a row for all quota windows,
-balance, account, reset, and source details. Settings provides one global used/left toggle, the full
-upstream provider catalog, provider ordering, and an Automatic or explicit WSL-distribution source.
+## Set up WSL2
 
-Click the notification-area icon to show or hide the popup. Clicking elsewhere hides it. Use
-**Ctrl+R** to refresh and **Escape** to go back or hide it. CodexBar refreshes every five minutes and
-keeps the last successful reading visible when a later refresh fails.
+1. Follow [Microsoft's WSL installation instructions](https://learn.microsoft.com/windows/wsl/install).
+2. Open the distribution once and finish creating its Linux user account. Use a non-root default user.
+3. In PowerShell, run `wsl --list --verbose` and confirm that the distribution shows version `2`.
+4. If you already use a provider's app/CLI or OpenCode, sign in within the distribution you want CodexBar to use. A Windows-only sign-in is not automatically available inside WSL.
 
-For an offline UI smoke test, set `CODEXBAR_WINDOWS_OFFLINE=1` before starting the application. This
-prevents WSL launches, credential reads, and provider requests.
+- CodexBar Setup can run before WSL is configured, but provider requests cannot work until WSL2 is ready.
+- Setup checks for the WSL command and links to Microsoft's guide; it does not install or initialize a distribution.
+- You do not need to install CodexBar CLI separately in WSL.
 
-## Build and run
+## Install, upgrade, or uninstall
 
-Install Swift 6.2 or newer for Windows and the Microsoft C++ build tools required by Swift, then run:
+- Download from [GitHub Releases](https://github.com/hinneslung/CodexBar-for-Windows/releases/latest):
+  - Intel/AMD x64: the asset ending in `windows-x86_64-setup.exe`.
+  - ARM64: the asset ending in `windows-arm64-setup.exe`.
+  - Portable: the corresponding `windows-x86_64.zip` or `windows-arm64.zip`.
+- Installers install per user at `%LOCALAPPDATA%\Programs\CodexBar`, without requesting administrator access. Open the app from the Start menu.
+- For portable use, extract the entire ZIP. Keep the DLLs, resources, and `wsl-cli` folder beside `CodexBar.exe`.
+- Downloads are unsigned. Check the matching `.sha256` file before running an installer or portable app:
 
-```powershell
-swift build --product CodexBar
-swift test
-Start-Process .\.build\x86_64-unknown-windows-msvc\debug\CodexBar.exe
-```
+  ```powershell
+  Get-FileHash .\CodexBar-v0.56.8-windows.1-windows-x86_64-setup.exe -Algorithm SHA256
+  ```
 
-The application remains in the notification area after the popup is hidden.
+- Compare the hash with the same asset's `.sha256` file on the release page. A matching checksum verifies file integrity, not publisher identity.
+- Upgrade an installed copy by running the newer installer. Setup can close the installed app if needed.
+- To uninstall, quit CodexBar from its notification-area menu, then use Windows Settings → Apps.
+- Upgrades and uninstall preserve settings and saved credentials in `%LOCALAPPDATA%\CodexBar`, user-added files, and WSL data. Use **Clear** in a provider's settings to remove its saved manual credential before uninstalling if desired.
+- For unreleased builds only: [Actions artifacts](https://github.com/hinneslung/CodexBar-for-Windows/actions/workflows/release-cli.yml) are wrapped in a ZIP by GitHub. Extract that wrapper to get the installer EXE or portable ZIP and checksum.
 
-Local release compilation can use the target triples explicitly:
+## Use the app
 
-```powershell
-swift build -c release --product CodexBar --triple x86_64-unknown-windows-msvc
-swift build -c release --product CodexBar --triple aarch64-unknown-windows-msvc
-```
+- Click the notification-area icon to open or hide the popup. Check the hidden-icons area if it is not visible on the taskbar.
+- Open Settings to enable providers, reorder them, choose used/remaining percentages, set a refresh interval, or enable **Run at startup**.
+- Search below the enabled providers to filter the disabled list. Disabled providers are alphabetical; newly disabled entries stay at the top.
+- Click a provider for the details it exposes, such as quota windows, balance, reset times, and source.
+- Use **Ctrl+R** or the refresh icon to refresh; use **Escape** to go back or hide the popup.
+- The default refresh interval is five minutes. A later error can leave the last successful reading visible; check its age and error status.
 
-The ARM64 command needs the ARM64 MSVC tools and the ARM64 libraries from the Windows Swift SDK.
-Cross-compiling and inspecting an ARM64 executable on an x64 PC does not prove that the ARM64 tests
-or application run successfully.
+## Credential methods
 
-Ordinary GitHub CI builds and runs the Windows portability tests separately on native AMD64
-(`windows-2025`) and native ARM64 (`windows-11-vs2026-arm`) runners. Each job verifies the runner
-architecture, Swift target triple, PE machine, and Windows GUI subsystem. The native ARM64 job is the
-runtime evidence that cannot be produced by a local AMD64 machine.
+- Open a provider's settings to choose **WSL distro** and **Credentials**.
+- **WSL distro → Automatic** searches registered WSL2 distributions; choosing a name restricts that provider to that distribution.
+- **Credentials → Automatic** uses a compatible OpenCode connection when available, otherwise upstream CLI discovery. Existing CodexBar CLI configuration can also supply credentials. Automatic is not a login flow or a guarantee that credentials exist.
+- **Provider app/CLI** in the provider list means an existing provider tool, sign-in file, or local service can supply a source. It is used through Automatic, not offered as a separate manual choice.
+- **OpenCode** in the provider list means a compatible connection can be read from the selected Linux user's `~/.local/share/opencode/auth.json`. Windows OpenCode files are not used by this integration.
+- **API key** accepts the provider's supported usage credential, which may differ from an inference key. Fill in any additional fields shown by the app.
+- **Browser session** accepts the cookie/cURL formats described in the provider's **How to obtain this** instructions.
+- **Session token** is StepFun's separate manual method; see below.
+- Choose a manual method, paste the value, and select **Apply**. Saved secrets are hidden. Paste a replacement and Apply again, or select **Clear** to remove the saved credential.
+- Saved manual credentials take precedence over OpenCode and Automatic discovery. If a manual credential or selected OpenCode connection fails, the app reports the error rather than silently trying another credential source.
+- Capability labels describe available methods, not connected accounts. Enabled rows show the distro first, then the source; a retained reading can retain its last successful source label.
 
-## Installers and portable archives
+### Providers by credential method
 
-Download `CodexBar-v<tag>-windows-x86_64-setup.exe` for Intel/AMD x64 Windows or
-`CodexBar-v<tag>-windows-arm64-setup.exe` for Windows on ARM. Each installer is one download containing
-the app, runtime libraries, resources, and its matching WSL CLI. Installation is per user at
-`%LOCALAPPDATA%\Programs\CodexBar` and does not request administrator access. Open CodexBar from the
-Start menu; it then lives in the notification area. To launch at login, use **Run at startup** in
-CodexBar Settings. Silent installation never launches the app automatically.
+- These lists describe the Windows GUI catalog; a provider may appear in more than one group. They are not a claim that every account or plan has been live-tested.
+- **Provider app/CLI:** Amp, Antigravity, Augment, AWS Bedrock, Claude, Codebuff, Codex, Doubao, Droid (Factory), Gemini, Grok, JetBrains AI, Kilo, Kimi, Kiro, Vertex AI, Wayfinder.
+- **OpenCode:** ai&, Alibaba Coding Plan, Chutes, ClinePass, Copilot, Crof, DeepInfra, DeepSeek, Fireworks, Kilo, Kimi, MiniMax, Moonshot, Ollama, OpenCode Go, OpenRouter, Poe, Synthetic, Venice, z.ai.
+  - Copilot accepts a compatible OAuth access token; Poe accepts a compatible API key or OAuth access token. Other listed mappings accept API-key records.
+  - A provider connection must use the credential type and account/region expected by the upstream CLI; not every OpenCode connection is compatible.
+- **API key:** ai&, Alibaba Coding Plan, Amp, Azure OpenAI, Chutes, Claude, ClawRouter, ClinePass, Codebuff, Copilot, Crof, Deepgram, DeepInfra, DeepSeek, Doubao, Droid (Factory), ElevenLabs, Fireworks, GroqCloud, IBM Bob, Kilo, Kimi, LiteLLM, LLM Proxy, MiniMax, Moonshot, Neuralwatt, Ollama, OpenAI, OpenCode Go, OpenRouter, Poe, Sub2API, Synthetic, Venice, Warp, xAI, z.ai, ZenMux.
+  - MiniMax requires a Coding Plan key beginning with `sk-cp-`, not a general `sk-api-` key.
+  - Some providers require an endpoint, region, workspace, deployment, or team identifier; use the fields and instructions shown for that provider.
+- **Browser session:** Alibaba Token Plan, Amp, Command Code, Cursor, Grok, LongCat, Manus, Mistral, Notion AI, Ollama, OpenCode, OpenCode Go, Perplexity, Qoder, Qwen Cloud, Sakana AI, T3 Chat, Xiaomi MiMo, ZoomMate.
+- **Session token:** StepFun.
+- **Unavailable on Windows:**
+  - Abacus AI: the upstream integration is macOS-only.
+  - Devin: the unchanged Linux CLI has no supported configuration route for its credentials.
+  - Windsurf: the upstream integration depends on macOS browser/local app data.
+  - Zed: the upstream integration reads macOS Keychain.
+  - These providers have no enable checkbox or editable configuration. Their pages explain the limitation and link to upstream notes.
 
-Provider usage requires a configured WSL distribution. Setup checks for the WSL command and offers
-the [Microsoft WSL setup guide](https://learn.microsoft.com/windows/wsl/install); it does not start a
-distribution or install WSL. Installing CodexBar before completing WSL setup is supported.
+## Browser sessions
 
-Run a newer installer to upgrade the same installation. Setup can close the installed app if it is
-in use. Quit the installed copy from its notification-area menu before uninstalling through Windows
-Settings → Apps; uninstall asks you to quit if that copy is still running. Upgrades and uninstall preserve settings and
-credentials in `%LOCALAPPDATA%\CodexBar`, user-added files, and WSL data. Uninstall removes the startup
-task only if its single executable action points to the copy being uninstalled.
+1. Select **Browser session**, then expand **How to obtain this** for the provider-specific site and request.
+2. Sign in to that site in Chrome. Press **F12**, open **Network**, and reload the page.
+3. Select the request described by the app, then use the format it asks for:
+   - Cookie value: under **Headers → Request Headers**, right-click **Cookie → Copy value**.
+   - cURL: right-click the request → **Copy → Copy as cURL (bash)**. Do not choose **cURL (cmd)**.
+4. Paste into CodexBar, fill any required companion fields, and select **Apply**.
 
-Installers and ZIPs are unsigned. Windows may show a downloaded-app reputation warning. Each download
-has a SHA-256 sidecar. Manual workflow runs expose separate GitHub workflow artifacts named
-`codexbar-windows-<architecture>-installer` and `codexbar-windows-<architecture>-portable`, where
-`<architecture>` is `x86_64` or `arm64`. Each contains only that package and its checksum. GitHub Actions
-wraps each artifact download in a ZIP; extract it to access the installer EXE or portable ZIP. Manual
-runs do not publish a GitHub release.
+- Most browser-session providers accept a Cookie value or cURL (bash); the app checks required cookies and supported request hosts.
+- **ZoomMate** requires the full cURL capture, including its Authorization header; a Cookie value alone is insufficient.
+- **Qoder** also accepts a full cURL capture to retain the request URL used for regional routing.
+- **Ollama** additionally accepts a supported session-cookie value without its name.
+- **StepFun:** choose **Session token**, not Browser session. Follow the app's instructions for a Step Plan usage request; paste the Cookie value containing `Oasis-Token=…` or only the value after `Oasis-Token=`. Do not paste cURL into this field.
+- Treat browser-session values like passwords. They can grant account access and may expire when you sign out. Do not post cookies or cURL captures in issues.
 
-GitHub Releases provides two self-contained archives:
+## Storage and security
 
-- `CodexBar-v<tag>-windows-x86_64.zip` for x64 Windows.
-- `CodexBar-v<tag>-windows-arm64.zip` for ARM64 Windows.
+- General settings: `%LOCALAPPDATA%\CodexBar\config.json`; manually entered secret fields are stored separately.
+- Saved manual credentials: `%LOCALAPPDATA%\CodexBar\Credentials\<provider-id>.bin`, encrypted with Windows DPAPI for the current user and restricted to that user and SYSTEM.
+- Other software running as the same Windows user may decrypt those credentials. This is not protection against a compromised account.
+- Manual values are stored on Windows, not assigned permanently to a WSL distro. Each request passes temporary configuration to the CLI without leaving a named plaintext configuration file.
+- Pasted cURL is parsed as data, never executed as a shell command. The Windows manual editor does not extract cookies from Windows browser databases.
+- The Windows OpenCode integration reads the selected user's auth file without rewriting it; it passes matching credentials to the child process for the request. Upstream CLI discovery has its own provider-specific behavior.
+- Provider requests send the credentials needed for authentication to the configured provider or service. Do not share saved credential files or raw captures.
 
-Extract the complete directory and start `CodexBar.exe`. Keep its DLL, resource, and `wsl-cli`
-folders beside the executable. The release workflow runs the Windows tests and builds each archive
-on the matching native Windows architecture. It pairs that app with the same-architecture static
-Linux-musl WSL CLI and staging launcher, verifies the PE and ELF machines, GUI subsystem, checksums,
-layout, and app-local Swift and Microsoft runtime DLLs, then smoke-starts the fully extracted archive
-on the same native runner. These ZIPs are currently unsigned because this repository has no configured
-Windows signing identity; Windows may therefore show its downloaded-app reputation warning.
+## Troubleshooting
 
-The native Windows release jobs also build an Inno Setup EXE from that verified ZIP. They test silent
-installation, payload hashes, offline startup, replacement during reinstall, uninstall, and startup
-task/data preservation on each native architecture. `Scripts/install_inno_setup.ps1` acquires the
-pinned official compiler with checksum verification. Local packaging accepts its explicit compiler
-path through `Scripts/package_windows_installer.ps1`; Swift and release output locations follow
-`.build/README.md`.
-
-## Provider engine
-
-The Windows catalog mirrors all current upstream provider IDs. Only Codex and Claude are enabled
-initially; this is presentation policy, not special provider handling.
-
-For every enabled provider the app discovers the canonical `codexbar` executable in the selected WSL
-distribution and invokes it directly as:
-
-```text
-wsl.exe -d <distribution> -- <codexbar-path> usage --provider <cli-name> --json-only
-```
-
-The Windows catalog keeps stable provider IDs for configuration and payload matching, while a small
-declarative map supplies the upstream CLI spelling where it differs (for example `qwencloud` uses
-`qwen-cloud`). No provider-specific execution branch is involved.
-
-Automatic searches registered WSL2 distributions in stable order. An explicit WSL distro limits the
-provider to that distribution. Within a distribution, discovery first checks `PATH` and standard
-system, Linuxbrew, and user-local binary directories. There is no user-supplied CLI path and no
-Windows CodexBar CLI backend. Provider commands such as `codex` and `claude` never receive CodexBar
-CLI arguments.
-
-Release users do **not** need to install the CodexBar CLI in WSL manually. Each Windows archive
-carries the matching static Linux CLI built from the same release tag. When no user-installed
-`codexbar` is found, the app copies that payload to
-`~/.local/share/codexbar-windows/<version>/` for the selected non-root WSL user and invokes its exact
-path. Packaging verifies the Linux CLI archive's workflow-produced SHA-256 checksum. The installation
-uses direct hidden WSL commands, validates the CLI and release-matched staging launcher, and does not
-add anything to `PATH`. Ordinary Automatic refresh searches existing CLIs across every candidate
-distribution before provisioning the bundled payload. Manual and OpenCode-isolated routes first use
-that policy to choose the distribution, then require the matching bundled CLI and launcher within it.
-Plain `swift build` developer output does not stage these release payloads, so a development run still
-needs an existing WSL CLI for Automatic usage and a complete `wsl-cli` directory beside
-`CodexBar.exe` for Manual or OpenCode-isolated usage.
-
-All child processes use Windows' no-window creation flag, bounded output, and a timeout. Provider
-errors are reduced to display-safe messages. The upstream CLI remains unchanged and continues to own
-provider fetching and its normal OAuth, API-key, cookie, CLI, and local-file discovery behavior.
-
-The manual editor is driven by one pinned Windows credential catalog. It exposes verified API-key
-routes, the browser-session routes listed below, and required companion fields such as Azure OpenAI
-endpoint and deployment, proxy base URLs, and xAI team ID. Unsupported or unverified routes do not
-receive a field. Provider-specific fetching remains in the unchanged upstream CLI; Windows keeps
-only declarative input, validation, and staging metadata.
-
-## Manual browser sessions
-
-Windows does not inspect browser databases. For a supported provider, select **Browser session** in
-its settings page and follow the Chrome-specific instructions shown there. Press F12, open **Network**,
-reload the page, and select a request that shows **Cookie** under **Headers > Request Headers**. Either
-right-click **Cookie > Copy value**, or right-click the request and choose
-**Copy > Copy as cURL (bash)**. Chrome's **Copy as cURL (cmd)** form is not accepted. The editor
-validates the paste locally and displays only a hidden-value marker after saving.
-
-| Provider | Accepted manual input |
-|---|---|
-| Alibaba Token Plan | Cookie value or Chrome Copy as cURL (bash) |
-| Amp | Cookie value or Chrome Copy as cURL (bash) |
-| Command Code | Cookie value or Chrome Copy as cURL (bash) |
-| Cursor | Cookie value or Chrome Copy as cURL (bash) |
-| Grok | Cookie value or Chrome Copy as cURL (bash) |
-| OpenCode Go | Cookie value or Chrome Copy as cURL (bash) |
-| Qwen Cloud | Cookie value or Chrome Copy as cURL (bash) |
-| Sakana AI | Cookie value or Chrome Copy as cURL (bash) |
-| Ollama | Cookie value, Chrome Copy as cURL (bash), or supported session value |
-| Qoder | Cookie value or full Chrome Copy as cURL (bash) |
-| LongCat | Cookie value or Chrome Copy as cURL (bash) |
-| Manus | Cookie value or Chrome Copy as cURL (bash) |
-| Xiaomi MiMo | Cookie value or Chrome Copy as cURL (bash) |
-| Mistral | Cookie value or Chrome Copy as cURL (bash) |
-| OpenCode | Cookie value or Chrome Copy as cURL (bash) |
-| Perplexity | Cookie value or Chrome Copy as cURL (bash) |
-| T3 Chat | Cookie value or Chrome Copy as cURL (bash) |
-| Notion AI | Cookie value or Chrome Copy as cURL (bash) |
-| ZoomMate | Full Chrome Copy as cURL (bash), including the Authorization header |
-
-StepFun uses a separate **Session token** method. Paste the Oasis-Token value itself; it is not a
-browser Cookie/cURL field.
-
-Cookie-only routes discard the URL and unrelated request headers before protection. Full-request
-routes retain only one allowlisted HTTPS URL and the small provider-specific header set the upstream
-fetcher consumes, including Cookie or Authorization only where that route requires it. Pasted cURL is
-parsed as data and is never executed; shell
-operators, request bodies, file references, proxies, output paths, multiple URLs, and unknown hosts
-are rejected.
-
-Browser sessions can grant account access and may expire. Replace or clear them from the same
-provider page. Abacus AI, Devin, Windsurf, and Zed are labelled **Unavailable on Windows** because
-their unchanged Linux implementation cannot complete a supported route. The app does not add a
-provider-specific Windows fetcher to bypass that limitation. GitHub Copilot's optional browser-budget
-enrichment remains outside the manual catalog; its existing API/OpenCode routes are unchanged.
-
-## Credentials
-
-CodexBar does not write, refresh, or alter imported provider, OpenCode, or upstream CodexBar files.
-`%LOCALAPPDATA%\CodexBar\config.json` remains secret-free. Each complete manual credential set is
-instead stored as current-user DPAPI ciphertext at
-`%LOCALAPPDATA%\CodexBar\Credentials\<provider-id>.bin`, under a current-user and SYSTEM-only DACL.
-Another process running as that same user can still request DPAPI decryption.
-
-Manual values do not belong to a WSL distribution. For each request the app resolves the WSL
-distribution normally, decrypts only that provider, and streams a minimal upstream-compatible config
-through anonymous stdin to the bundled staging launcher. The launcher holds it in a private anonymous
-Linux descriptor, sets `CODEXBAR_CONFIG` only for the unchanged bundled CLI lifetime, and leaves no
-named plaintext config. Secrets never enter argv, Windows or WSL config files, `WSLENV`, logs, or UI
-messages. Refresh and Save/Clear share a user-scoped per-provider operation lock; credential changes
-cancel an in-process refresh and stale results are discarded.
-
-Codex and Claude normally work directly because the upstream CLI runs in the same WSL home as their
-installed tools. For compatible OpenCode accounts, the Windows app reads only the selected WSL
-user's standard `~/.local/share/opencode/auth.json` and projects the requested provider's credential
-into that one isolated `codexbar` child process. The minimal staged config contains no OpenCode
-secret, but prevents the user's normal upstream config from silently overriding the projected
-credential. Nothing is persisted and credential values are never placed in UI messages or logs.
-Imported API keys and OAuth tokens remain ephemeral.
-
-Resolution is deterministic: a valid manual provider file wins and fails closed; otherwise a
-compatible OpenCode mapping wins and fails closed; otherwise the app performs ordinary Automatic
-upstream discovery. The app does not read OpenCode `auth.json` when a manual file is present.
-
-The bridge is declarative. API-key records currently cover:
-
-- ai&, Alibaba Coding Plan, Chutes, ClinePass, Crof, DeepInfra, DeepSeek, Fireworks, Kilo, Kimi,
-  MiniMax, Moonshot, Ollama Cloud, OpenCode Go, OpenRouter, Poe, Synthetic, Venice, and z.ai.
-- GitHub Copilot and Poe are the only mappings that explicitly permit an OpenCode OAuth access token.
-
-Moonshot and z.ai aliases project their supported region variables. The Alibaba CN and MiniMax CN
-aliases are intentionally not projected: CodexBar 0.54.1 exposes their region only through its own
-configuration, not an environment variable, so silently using a global endpoint would be unsafe.
-
-An OpenCode credential helps only when upstream CodexBar supports that provider and accepts the
-corresponding credential kind. Inference keys are not substituted for unrelated management,
-organization, browser-session, or admin-usage credentials.
-
-WSL distribution metadata comes from the current user's registry. The selected non-root default home
-is resolved from that distribution's `/etc/passwd` through `\\wsl.localhost`; other users and root are
-not scanned.
-
-## Presentation rules
-
-- Reset labels use a relative duration below 24 hours, local weekday and time within seven days, and
-  local date and time after that. The redundant word “Resets” and timezone suffixes are omitted.
-- Providers without a known allocation do not get an invented progress bar. Poe shows its available
-  point balance and always labels it as left, even when percentage mode is set to used.
-- The notification-area tooltip mirrors enabled Overview rows in order and is truncated only at whole
-  provider lines to fit Windows' tooltip limit.
-- A provider settings page shows an error only after that source was applied and its refresh failed.
-
-## Verification
-
-Offline tests use fictitious credentials and deterministic payloads. A deliberate live check can use:
-
-```powershell
-$env:CODEXBAR_LIVE_PROVIDER_TESTS = '1'
-swift test --filter WindowsConfiguredProviderLiveTests
-```
-
-This runs the enabled providers through the same hidden WSL execution path as the application.
-
-The opt-in bundled-CLI installation check uses a disposable app-owned version directory and removes
-it after execution:
-
-```powershell
-$env:CODEXBAR_LIVE_WSL_PROVISION_TESTS = '1'
-$env:CODEXBAR_LIVE_WSL_DISTRIBUTION = 'Ubuntu'
-$env:CODEXBAR_LIVE_WSL_HOME = '/home/example'
-swift test --filter WindowsBundledWSLCLIProvisionerTests.provisionsLiveWSLPayload
-```
+- **WSL or CLI unavailable:** run `wsl --list --verbose`, confirm version 2, and open the selected distribution to finish its setup. Use its non-root default user.
+- **Automatic fails:** confirm the provider tool or OpenCode is signed in within the selected distribution. If supported, select a manual credential method instead.
+- **Saved manual credential fails:** replace or Clear it; it takes precedence over Automatic. Check key type, region, and companion fields.
+- **OpenCode sign-in expired:** reconnect that provider in OpenCode within the selected distribution, then refresh.
+- **Browser capture rejected:** use the provider's request instructions and cURL (bash), not cURL (cmd). Copy a fresh request after signing in; do not paste the response body.
+- **Old values remain after an error:** they are the last successful reading, not confirmation that the latest request succeeded.
+- **Installer will not uninstall:** quit the installed CodexBar copy from its notification-area menu and retry.
+- **Report a problem:** open a [fork issue](https://github.com/hinneslung/CodexBar-for-Windows/issues) with the app version, Windows architecture, WSL distro/version, provider, credential-method label, and display-safe error. Remove account identifiers from screenshots; never include API keys, cookies, raw cURL, or auth files.

@@ -19,8 +19,8 @@ read_when:
 
 ## Upstream updates
 
-The current Windows baseline is upstream `v0.56.8`. Prefer published upstream release tags;
-syncing mirror `main` does not automatically update the Windows branch.
+- The current Windows baseline is upstream `v0.56.8`. Prefer published upstream release tags;
+  syncing mirror `main` does not automatically update the Windows branch.
 
 1. Pause Windows merges and record open feature branches. Preserve the old integration tip with
    a `backup/windows-before-<date>` tag. Never move published Windows release tags.
@@ -33,7 +33,7 @@ syncing mirror `main` does not automatically update the Windows branch.
 5. Rebase outstanding feature commits onto the new Windows tip; do not merge the obsolete Windows
    history back in. Update the baseline recorded in this document.
 
-The mirror sync workflow never rebases or pushes the Windows branch.
+- The mirror sync workflow never rebases or pushes the Windows branch.
 
 ## Builds and releases
 
@@ -49,4 +49,7 @@ The mirror sync workflow never rebases or pushes the Windows branch.
 - A successful build is not a complete release sign-off: require both installer lifecycle gates,
   fresh visual smoke evidence, and an explicit account of any untested live-provider behavior.
 
-Local output follows `.build/README.md`; do not create feature-named build directories.
+- Build commands, runtime architecture, test setup, and packaging inputs live in the
+  [Windows development guide](windows-development.md).
+- User requirements, installation, credentials, and troubleshooting live in the
+  [Windows user guide](windows.md).
