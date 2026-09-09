@@ -235,6 +235,7 @@ CLI install:
 
 ## Looking for a Windows version?
 - [Win-CodexBar](https://github.com/Finesssee/Win-CodexBar)
+- [CodexBar for Windows](https://github.com/hinneslung/CodexBar-for-Windows) — Native Windows tray app powered by the original CodexBar CLI through WSL2; x64 and ARM64 installers.
 
 ## Linux desktop integration?
 - [codexbar-waybar](https://github.com/Marouan-chak/codexbar-waybar) — Waybar custom module + GTK4 popover for Hyprland / Sway / other Wayland compositors, built on top of the bundled Linux CLI.
