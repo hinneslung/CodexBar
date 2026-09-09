@@ -4,7 +4,20 @@
 - **Requires Windows Subsystem for Linux 2 (WSL2).** The app uses the original [CodexBar command-line tool](https://github.com/steipete/CodexBar) to fetch usage inside Linux. This tool is included; you only need to set up WSL2.
 - [Download the latest release](https://github.com/hinneslung/CodexBar-for-Windows/releases/latest) · [User guide](docs/windows.md) · [Report an issue](https://github.com/hinneslung/CodexBar-for-Windows/issues)
 
-![Windows overview showing usage and balances for enabled providers](docs/screenshots/windows-wsl-overview.png)
+<p>
+  <img src="docs/screenshots/windows-usage-overview.png" alt="Usage overview with remaining quotas, balances, and reset times" width="360">
+  <img src="docs/screenshots/windows-tray-summary.png" alt="Hovering over the tray icon shows a quick usage summary" width="173">
+</p>
+
+<details>
+<summary>Settings and provider search</summary>
+
+<p>
+  <img src="docs/screenshots/windows-settings-providers.png" alt="Settings for refresh frequency, startup, and the providers you track" width="320">
+  <img src="docs/screenshots/windows-provider-search.png" alt="Search for providers and see the connection methods each supports" width="320">
+</p>
+
+</details>
 
 ## For users
 

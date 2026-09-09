@@ -16,11 +16,23 @@ assertEqual(new Set(providerIDs).size, providerIDs.length, "UsageProvider IDs");
 const providerCount = providerIDs.length;
 
 const publicCountFiles = [
-  ["README.md", `alt="CodexBar — every AI coding limit in your menu bar. ${providerCount} providers."`],
   ["docs/providers.md", `CodexBar currently registers ${providerCount} provider IDs.`],
   ["docs/social.html", `<strong>${providerCount} providers</strong>`],
   ["docs/llms.txt", `across ${providerCount} providers`],
 ];
+// The fork README covers Windows setup, not the upstream macOS site's provider count.
+const windowsReadme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+for (const requiredText of [
+  "# CodexBar for Windows",
+  "Windows Subsystem for Linux 2 (WSL2)",
+  "https://github.com/steipete/CodexBar",
+  "## For users",
+  "## For developers",
+  "docs/windows.md",
+  "docs/windows-development.md",
+]) {
+  assert(windowsReadme.includes(requiredText), `Windows README must include ${requiredText}`);
+}
 for (const [relativePath, expectedText] of publicCountFiles) {
   const contents = fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
   assert(contents.includes(expectedText), `${relativePath} must advertise ${providerCount} providers`);
