@@ -1,55 +1,58 @@
 ---
-summary: "Windows fork branches, upstream synchronization, and release gates."
+summary: "How to contribute, update from upstream, and publish Windows releases."
 read_when:
-  - Contributing to the Windows fork or updating its upstream baseline
+  - Contributing to the Windows fork or updating its upstream version
 ---
 
 # Windows fork workflow
 
 ## Branches and pull requests
 
-- `main` is an exact upstream-main mirror, with no fork-specific commits. The daily/manual
-  **Sync upstream main** workflow fast-forwards it; divergence must fail, never force-reset.
-- `windows-native-app` is the default, long-lived integration branch. Create short-lived
-  `windows/<feature>` branches from it and target PRs at this fork's `windows-native-app`, not `main`
-  or the upstream repository. Squash-merge one coherent change per PR after required checks pass.
-- Protect both long-lived branches from deletion. Normal Windows changes require PRs and passing
-  CI. The repository administrator may bypass protection only for coordinated upstream rebases or
-  repository maintenance, not to label a failing build release-ready.
+- `main` copies the original CodexBar repository's `main` branch. Do not add Windows changes there.
+  **Sync upstream main** updates it daily and can also be run manually. If the histories have
+  diverged, the workflow must stop rather than overwrite either history.
+- `windows-native-app` is the default branch and contains the Windows app. Start a
+  `windows/<feature>` branch from it, then open a PR back to this fork's `windows-native-app`.
+  Do not target `main` or the original CodexBar repository.
+- Keep each PR focused on one change. Squash-merge it after all required checks pass.
+- Keep deletion protection enabled for `main` and `windows-native-app`. Administrator bypass is
+  reserved for coordinated upstream rebases or repository maintenance, not ordinary PRs or failing builds.
 
 ## Upstream updates
 
-- The current Windows baseline is upstream `v0.56.8`. Prefer published upstream release tags;
-  syncing mirror `main` does not automatically update the Windows branch.
+- The Windows branch is currently based on upstream `v0.56.8`. Prefer published upstream releases
+  when updating it. Syncing `main` alone does not update the Windows app.
 
-1. Pause Windows merges and record open feature branches. Preserve the old integration tip with
+1. Pause Windows PR merges and record open feature branches. Save the current Windows commit with
    a `backup/windows-before-<date>` tag. Never move published Windows release tags.
-2. Fetch upstream tags and rebase on a temporary integration branch against the chosen release tag.
-   Review the resulting Windows patch series and verify the CLI/Core boundary remains unchanged.
-3. Run the Windows tests, AMD64/ARM64 native CI, packaging gates, and a fresh debug visual smoke test.
-   Resolve release-blocking failures before accepting the new baseline.
-4. Update `windows-native-app` using an explicit expected-old-SHA `--force-with-lease`, only after
-   confirming nobody has advanced it. Force pushes are reserved for this coordinated operation.
-5. Rebase outstanding feature commits onto the new Windows tip; do not merge the obsolete Windows
-   history back in. Update the baseline recorded in this document.
+2. Fetch upstream tags. On a temporary branch, rebase the Windows changes onto the chosen release.
+   Review the result and confirm that the Windows changes still leave `Sources/CodexBarCLI` and
+   `Sources/CodexBarCore` unchanged from that upstream release.
+3. Run the Windows tests and native x64/ARM64 CI, verify the packages, and visually check a fresh
+   debug build. Fix any failures that would block a release before accepting the update.
+4. Confirm that nobody has pushed new Windows commits. Update `windows-native-app` with
+   `--force-with-lease`, supplying the exact previous commit SHA as the expected value.
+   Do not use a plain force push.
+5. Rebase open feature branches onto the updated Windows branch. Do not merge the old branch
+   history back in. Record the new upstream version in this document.
 
 - The mirror sync workflow never rebases or pushes the Windows branch.
 
 ## Builds and releases
 
-- CI runs on Windows-targeted PRs and pushes to the integration branch. Required native Windows
-  checks and the `lint-build-test` gate must pass before ordinary PR merges.
-- **Release artifacts** can be dispatched manually from `windows-native-app` to rehearse packaging
-  without publishing. Its optional tag input labels the artifacts; it does not select the checkout.
-- For publication, create an immutable fork-specific tag such as `v0.56.8-windows.1` on the tested
-  Windows commit, then publish a GitHub release for that tag. Never reuse or move an upstream tag.
-  The release event builds and uploads installers, portable ZIPs, and checksums for both architectures.
-- The fork must not dispatch upstream Homebrew updates. Packages are currently unsigned; disclose
-  that limitation and link the WSL requirements and setup instructions in the release notes.
-- A successful build is not a complete release sign-off: require both installer lifecycle gates,
-  fresh visual smoke evidence, and an explicit account of any untested live-provider behavior.
+- CI runs for PRs targeting `windows-native-app` and for pushes to that branch. The required native
+  Windows checks and `lint-build-test` must pass before merging a PR.
+- Run **Release artifacts** manually on `windows-native-app` to test packaging without publishing.
+  The optional tag field names the output files; it does not choose which commit to build.
+- Before publishing, require passing installer tests on both architectures and a visual check of
+  the packaged app. Record any provider connections that have not been tested with a real account.
+- Tag the tested Windows commit with a fork-specific version such as `v0.56.8-windows.1`, then
+  publish a GitHub release for that tag. Publication starts the build that uploads installers,
+  portable ZIPs, and checksums for both architectures. Never move a published tag or reuse an upstream tag.
+- State in the release notes that packages are unsigned, and link to the WSL requirements and
+  setup instructions. Do not trigger the original project's Homebrew update process.
 
-- Build commands, runtime architecture, test setup, and packaging inputs live in the
+- Build commands, code layout, tests, and packaging instructions are in the
   [Windows development guide](windows-development.md).
 - User requirements, installation, credentials, and troubleshooting live in the
   [Windows user guide](windows.md).
