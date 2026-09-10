@@ -1286,6 +1286,7 @@ final class WindowsPopupWindow {
             font: self.secondaryFont,
             format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE))
         y += self.scaled(42)
+        // Provider-specific by design: Only Codex profiles expose the Codex sign-in directory field and its hint.
         if provider == .codex {
             let hintHeight = self.configurationWrappedTextHeight(Self.codexHomeHint)
                 ?? self.scaled(36)
@@ -1529,6 +1530,7 @@ final class WindowsPopupWindow {
         self.configurationProfileNameControl = self.makeConfigurationEditControl(
             text: configuration.profileName,
             limit: WindowsProviderProfileValidation.maximumNameCharacters)
+        // Provider-specific by design: Create the optional home editor only for Codex's directory-based sign-ins.
         if configuration.id == .codex {
             self.configurationCodexHomeControl = self.makeConfigurationEditControl(
                 text: configuration.codexHome ?? "",
@@ -2040,6 +2042,7 @@ final class WindowsPopupWindow {
         let priorHeight = self.activeConfigurationFields.prefix(index).reduce(Int32(0)) {
             $0 + self.configurationFieldRowHeight($1)
         }
+        // Provider-specific by design: Reserve space for the Codex home editor before the remaining fields.
         return self.scaled(Metrics.headerHeight + 138)
             + (self.activeConfigurationProvider == .codex ? self.configurationCodexHomeBlockHeight : 0)
             + self.configurationCredentialHelpHeight
@@ -2247,6 +2250,7 @@ final class WindowsPopupWindow {
             configuration.profileName = Self.windowText(control)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        // Provider-specific by design: Apply this directory draft only to the Codex profile that owns the editor.
         if configuration.id == .codex, let control = self.configurationCodexHomeControl {
             let value = Self.windowText(control).trimmingCharacters(in: .whitespacesAndNewlines)
             configuration.codexHome = value.isEmpty ? nil : value
@@ -2917,6 +2921,7 @@ final class WindowsPopupWindow {
             self.configurationCredentialSetDraftID == nil
                 ? self.configurationAutomaticHintHeight(provider: provider)
                 : 0
+        // Provider-specific by design: Codex alone needs scroll space for the home editor and its wrapped hint.
         return self.scaled(180 + loadingHeight + errorHeight)
             + (provider == .codex ? self.configurationCodexHomeBlockHeight : 0)
             + self.configurationCredentialHelpHeight

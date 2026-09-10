@@ -308,6 +308,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
                 source: configuredSource,
                 authorityCheck: credentialRoute.check)
         }
+        // Provider-specific by design: Stage Codex's home selection so upstream account settings cannot override it.
         if provider.id == .codex, let configuredHome = provider.codexHome {
             do {
                 let home = try Self.resolveCodexHome(

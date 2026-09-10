@@ -153,6 +153,7 @@ struct WindowsProviderConfiguration: Codable, Equatable, Sendable, CustomStringC
         self.sourceMode = sourceMode
         self.wslDistro = wslDistro
         self.companionValues = Self.sanitizedCompanionValues(companionValues, provider: id)
+        // Provider-specific by design: Codex home selects a Codex sign-in directory, not another provider's account.
         if id == .codex, let codexHome {
             let trimmedHome = codexHome.trimmingCharacters(in: .whitespacesAndNewlines)
             self.codexHome = trimmedHome.isEmpty ? nil : trimmedHome
@@ -204,6 +205,7 @@ struct WindowsProviderConfiguration: Codable, Equatable, Sendable, CustomStringC
             throw DecodingError.dataCorruptedError(
                 forKey: .codexHome, in: container, debugDescription: "Invalid Codex home")
         }
+        // Provider-specific by design: Restore Codex home only for Codex; other profiles must not inherit its scope.
         self.codexHome = self.id == .codex
             ? WindowsProviderProfileValidation.normalizedCodexHome(decodedCodexHome)
             : nil

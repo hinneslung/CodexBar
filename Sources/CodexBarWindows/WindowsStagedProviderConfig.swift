@@ -118,6 +118,7 @@ enum WindowsStagedProviderConfig {
         guard let path = WindowsProviderProfileValidation.normalizedCodexHome(path),
               path.hasPrefix("/")
         else { throw WindowsStagedProviderConfigError.invalidValue("Codex home") }
+        // Provider-specific by design: The staged upstream Codex account selection must target its exact provider ID.
         let payload = ConfigPayload(
             version: 1,
             providers: [
