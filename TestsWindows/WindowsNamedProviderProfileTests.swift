@@ -71,8 +71,8 @@ struct WindowsNamedProviderProfileTests {
     @Test
     func `profile names and Codex homes enforce safe bounded input`() {
         #expect(WindowsProviderProfileValidation.normalizedName("  Work  ") == "Work")
-        #expect(WindowsProviderProfileValidation.normalizedName("") == "")
-        #expect(WindowsProviderProfileValidation.normalizedName("   ") == "")
+        #expect(WindowsProviderProfileValidation.normalizedName("")?.isEmpty == true)
+        #expect(WindowsProviderProfileValidation.normalizedName("   ")?.isEmpty == true)
         #expect(WindowsProviderProfileValidation.normalizedName("bad\u{202E}name") == nil)
         #expect(WindowsProviderProfileValidation.normalizedCodexHome(" ~/.codex-personal ") == "~/.codex-personal")
         #expect(WindowsProviderProfileValidation
@@ -90,11 +90,11 @@ struct WindowsNamedProviderProfileTests {
             profileName: "   ",
             enabled: true,
             order: 0)
-        #expect(explicitBlank.profileName == "")
+        #expect(explicitBlank.profileName.isEmpty)
         let roundTrip = try JSONDecoder().decode(
             WindowsProviderConfiguration.self,
             from: JSONEncoder().encode(explicitBlank))
-        #expect(roundTrip.profileName == "")
+        #expect(roundTrip.profileName.isEmpty)
 
         let legacy = Data(#"{"id":"codex","enabled":true,"order":0}"#.utf8)
         let legacyProfile = try JSONDecoder().decode(WindowsProviderConfiguration.self, from: legacy)
@@ -138,7 +138,8 @@ struct WindowsNamedProviderProfileTests {
         let active = try #require(codex["codexActiveSource"] as? [String: Any])
         #expect(active["kind"] as? String == "liveSystem")
         #expect(active["homePath"] as? String == path)
-        #expect(String(decoding: data, as: UTF8.self).contains("managedAccount") == false)
+        let text = try #require(String(bytes: data, encoding: .utf8))
+        #expect(!text.contains("managedAccount"))
     }
 
     @Test
@@ -514,7 +515,7 @@ private final class NamedProfileRunner: @unchecked Sendable {
 
     func run(standardInput: Data?) throws -> WindowsHiddenProcessResult {
         let input = try #require(standardInput)
-        let text = String(decoding: input, as: UTF8.self)
+        let text = try #require(String(bytes: input, encoding: .utf8))
         let account: String
         let usedPercent: Int
         if text.contains("synthetic-work-key") {

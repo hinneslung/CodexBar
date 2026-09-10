@@ -210,7 +210,8 @@ struct WindowsProviderConfiguration: Codable, Equatable, Sendable, CustomStringC
     }
 
     var description: String {
-        "WindowsProviderConfiguration(id: \(self.id), profileID: \(self.profileID), enabled: \(self.enabled), order: \(self.order), "
+        "WindowsProviderConfiguration(id: \(self.id), profileID: \(self.profileID), "
+            + "enabled: \(self.enabled), order: \(self.order), "
             + "sourceMode: \(self.sourceMode), wslDistributionConfigured: \(self.wslDistro != nil))"
     }
 

@@ -1855,18 +1855,11 @@ final class WindowsPopupWindow {
         let inset = self.scaled(Metrics.horizontalInset)
         let viewportTop = self.scaled(Metrics.headerHeight)
         let viewportBottom = client.bottom - self.scaled(Metrics.footerHeight)
-        if let control = self.configurationProfileNameControl {
-            let y = self.scaled(Metrics.headerHeight + 12) - self.scrollOffset
-            self.layoutConfigurationControl(
-                control,
-                rect: RECT(
-                    left: inset + self.scaled(86),
-                    top: y,
-                    right: client.right - inset,
-                    bottom: y + self.scaled(28)),
-                viewportTop: viewportTop,
-                viewportBottom: viewportBottom)
-        }
+        self.layoutProfileNameControl(
+            client: client,
+            inset: inset,
+            viewportTop: viewportTop,
+            viewportBottom: viewportBottom)
         if let sourceControl = self.configurationSourceControl {
             guard case .configure = self.page else {
                 _ = ShowWindow(sourceControl, SW_HIDE)
@@ -1937,18 +1930,11 @@ final class WindowsPopupWindow {
                     top: inputTop,
                     right: client.right - inset,
                     bottom: inputTop + self.configurationFieldInputHeight(field))
-                if rect.top >= viewportTop, rect.bottom <= viewportBottom {
-                    _ = SetWindowPos(
-                        control,
-                        nil,
-                        rect.left,
-                        rect.top,
-                        rect.right - rect.left,
-                        rect.bottom - rect.top,
-                        UINT(SWP_NOZORDER | SWP_SHOWWINDOW))
-                } else {
-                    _ = ShowWindow(control, SW_HIDE)
-                }
+                self.layoutConfigurationControl(
+                    control,
+                    rect: rect,
+                    viewportTop: viewportTop,
+                    viewportBottom: viewportBottom)
             }
         } else {
             for control in self.configurationFieldControls.values {
@@ -2009,6 +1995,25 @@ final class WindowsPopupWindow {
                 _ = ShowWindow(searchControl, SW_HIDE)
             }
         }
+    }
+
+    private func layoutProfileNameControl(
+        client: RECT,
+        inset: Int32,
+        viewportTop: Int32,
+        viewportBottom: Int32)
+    {
+        guard let control = self.configurationProfileNameControl else { return }
+        let y = self.scaled(Metrics.headerHeight + 12) - self.scrollOffset
+        self.layoutConfigurationControl(
+            control,
+            rect: RECT(
+                left: inset + self.scaled(86),
+                top: y,
+                right: client.right - inset,
+                bottom: y + self.scaled(28)),
+            viewportTop: viewportTop,
+            viewportBottom: viewportBottom)
     }
 
     private func layoutConfigurationControl(
