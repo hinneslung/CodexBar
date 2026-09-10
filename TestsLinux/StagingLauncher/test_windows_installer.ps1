@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][string] $Installer,
     [Parameter(Mandatory)][string] $Archive,
     [Parameter(Mandatory)][ValidateSet('x86_64', 'arm64')][string] $AssetArchitecture,
+    [string] $DiagnosticsDirectory,
     [switch] $TestIdentity
 )
 $ErrorActionPreference = 'Stop'
@@ -28,6 +29,10 @@ $qaBase = Join-Path ([IO.Path]::GetTempPath()) 'CodexBar/qa'
 [IO.Directory]::CreateDirectory($qaBase) | Out-Null
 $work = Join-Path $qaBase ('installer-lifecycle-' + [guid]::NewGuid())
 [IO.Directory]::CreateDirectory($work) | Out-Null
+if (-not $DiagnosticsDirectory) { $DiagnosticsDirectory = Join-Path $work 'diagnostics' }
+if (Test-Path -LiteralPath $DiagnosticsDirectory) { throw 'Diagnostics directory must be new.' }
+[IO.Directory]::CreateDirectory($DiagnosticsDirectory) | Out-Null
+Write-Host "Installer diagnostics: $DiagnosticsDirectory"
 $installDirectory = Join-Path $work 'installed'
 $sourceDirectory = Join-Path $work 'source'
 $exe = Join-Path $installDirectory 'CodexBar.exe'
@@ -39,25 +44,51 @@ foreach ($name in @('LOCALAPPDATA', 'CODEXBAR_WINDOWS_OFFLINE', 'PATH')) {
 $appProcess = $null
 $taskCreated = $false
 $installCount = 0
+$uninstallCount = 0
 $payloadInstalled = $false
+$lifecycleStage = 'prepare-payload'
+
+function Write-LifecycleStage([string] $Name) {
+    $script:lifecycleStage = $Name
+    $line = "$([DateTime]::UtcNow.ToString('o')) $Name"
+    Write-Host "Installer stage: $Name"
+    try {
+        [IO.File]::AppendAllText((Join-Path $DiagnosticsDirectory 'stages.log'), "$line`n")
+    } catch { Write-Warning "Could not write stage log: $($_.Exception.Message)" -WarningAction Continue }
+}
+function Write-LifecycleFailure([Management.Automation.ErrorRecord] $Failure, [string] $Kind) {
+    # Report before cleanup can replace the primary exception. Diagnostics must not mask it either.
+    $report = "Kind: $Kind`nStage: $lifecycleStage`n$($Failure.Exception.Message)`n" +
+        "$($Failure.InvocationInfo.PositionMessage)`n$($Failure.ScriptStackTrace)"
+    Write-Host $report
+    try {
+        [IO.File]::WriteAllText((Join-Path $DiagnosticsDirectory "$Kind-failure.txt"), $report)
+    } catch { Write-Warning "Could not write $Kind failure report: $($_.Exception.Message)" -WarningAction Continue }
+}
 
 function Invoke-InstallerProcess([string] $Path, [string[]] $Arguments) {
     $process = Start-Process -FilePath $Path -ArgumentList $Arguments -PassThru -WindowStyle Hidden
     if (-not $process.WaitForExit(120000)) {
         Stop-Process -Id $process.Id -Force
-        throw 'Installer exceeded the lifecycle deadline.'
+        throw "Installer exceeded the lifecycle deadline at $lifecycleStage."
     }
-    if ($process.ExitCode -ne 0) { throw "Installer lifecycle failed: $($process.ExitCode)" }
+    Write-Host "Installer stage $lifecycleStage exited with code $($process.ExitCode)."
+    if ($process.ExitCode -ne 0) { throw "Installer lifecycle failed at ${lifecycleStage}: $($process.ExitCode)" }
 }
 function Install-Payload {
     $script:installCount++
     # Retain cleanup responsibility even if setup exits after a partial install.
     $script:payloadInstalled = $true
+    Write-LifecycleStage "setup-$installCount"
+    $log = Join-Path $DiagnosticsDirectory "setup-$installCount.log"
     Invoke-InstallerProcess $Installer @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
-        '/CLOSEAPPLICATIONS', '/RESTARTEXITCODE=3010', "/DIR=`"$installDirectory`"", "/LOG=`"$work\setup-$installCount.log`"")
+        '/CLOSEAPPLICATIONS', '/RESTARTEXITCODE=3010', "/DIR=`"$installDirectory`"", "/LOG=`"$log`"")
 }
 function Uninstall-Payload {
-    Invoke-InstallerProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$work\uninstall.log`"")
+    $script:uninstallCount++
+    Write-LifecycleStage "uninstall-$uninstallCount"
+    $log = Join-Path $DiagnosticsDirectory "uninstall-$uninstallCount.log"
+    Invoke-InstallerProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"")
     # Inno may delete its executable asynchronously after success. Its continued existence is
     # not evidence of an installed payload and must not trigger a second uninstall in finally.
     $script:payloadInstalled = $false
@@ -94,6 +125,7 @@ function Assert-PreservedData {
         (Get-FileHash -LiteralPath $config).Hash -cne $configHash) { throw 'User data changed.' }
 }
 try {
+    Write-LifecycleStage 'prepare-payload'
     Expand-VerifiedWindowsPayload -Archive $Archive -Architecture $AssetArchitecture -Destination $sourceDirectory
     $env:LOCALAPPDATA = Join-Path $work 'localappdata'
     $env:CODEXBAR_WINDOWS_OFFLINE = '1'
@@ -108,6 +140,7 @@ try {
     if (Get-Process CodexBar -ErrorAction SilentlyContinue | Where-Object Path -eq $exe) {
         throw 'Silent installation unexpectedly launched the app.'
     }
+    Write-LifecycleStage 'installed-app-smoke'
     $appProcess = Start-Process -FilePath $exe -WorkingDirectory $installDirectory -PassThru -WindowStyle Hidden
     if ($appProcess.WaitForExit(5000)) { throw "Installed app exited: $($appProcess.ExitCode)" }
     # Smoke startup may migrate synthetic defaults; preserve the resulting state across upgrade/uninstall.
@@ -119,12 +152,16 @@ try {
     Assert-PreservedData
     $appProcess.Refresh()
     if (-not $appProcess.HasExited) { throw 'Reinstall did not close the installed app.' }
+    Write-LifecycleStage 'running-app-uninstall-guard'
     Set-FixtureTask (Join-Path $work 'portable/CodexBar.exe')
     $appProcess = Start-Process -FilePath $exe -WorkingDirectory $installDirectory -PassThru -WindowStyle Hidden
     if ($appProcess.WaitForExit(5000)) { throw 'Installed app did not stay running for uninstall guard test.' }
-    $blocked = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') `
+    $guardLog = Join-Path $DiagnosticsDirectory 'uninstall-guard.log'
+    $blocked = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+        "/LOG=`"$guardLog`"") `
         -PassThru -WindowStyle Hidden
     if (-not $blocked.WaitForExit(30000)) { Stop-Process -Id $blocked.Id -Force; throw 'Uninstall guard hung.' }
+    Write-Host "Uninstall guard exited with code $($blocked.ExitCode) (nonzero expected)."
     if ($blocked.ExitCode -eq 0) { throw 'Uninstall accepted a running installed app.' }
     Assert-Payload
     if (-not (Get-ScheduledTask -TaskPath '\' -TaskName $taskName -ErrorAction SilentlyContinue)) {
@@ -158,11 +195,19 @@ try {
     if ((Test-Path -LiteralPath $shortcut) -or $null -ne $registry.OpenSubKey($registryPath)) {
         throw 'Uninstall left registration or shortcut.'
     }
+    Write-LifecycleStage 'complete'
     Write-Host "Installer lifecycle passed on $expected. Evidence: $work"
+} catch {
+    Write-LifecycleFailure $_ 'primary'
+    throw
 } finally {
     try {
+        Write-LifecycleStage 'cleanup'
         if ($null -ne $appProcess -and -not $appProcess.HasExited) { Stop-Process -Id $appProcess.Id -Force }
         if ($payloadInstalled -and (Test-Path -LiteralPath $uninstaller)) { Uninstall-Payload }
+    } catch {
+        Write-LifecycleFailure $_ 'cleanup'
+        throw
     } finally {
         try {
             if ($taskCreated) { Unregister-ScheduledTask -TaskPath '\' -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue }

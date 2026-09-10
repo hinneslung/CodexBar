@@ -19,8 +19,11 @@ $uninstaller = 'synthetic-uninstall.exe'
 $work = 'synthetic-work'
 $installDirectory = 'synthetic-installation'
 $installCount = 0
+$uninstallCount = 0
+$DiagnosticsDirectory = 'synthetic-diagnostics'
 $payloadInstalled = $false
 $failProcess = $false
+function Write-LifecycleStage([string] $Name) {}
 function Invoke-InstallerProcess([string] $Path, [string[]] $Arguments) {
     if ($failProcess) { throw 'Synthetic process failure' }
 }
