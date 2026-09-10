@@ -18,7 +18,17 @@ struct WindowsProviderCredentialRouteResolver: Sendable {
         try self.credentialVault?.load(provider)
     }
 
+    func load(_ profile: WindowsProviderConfiguration) throws -> WindowsProviderCredentialRecord? {
+        try self.credentialVault?.load(profile.id, profileID: profile.profileID)
+    }
+
     func resolve(_ provider: WindowsProviderID) -> WindowsProviderCredentialRouteAuthority {
+        self.resolve(
+            WindowsProviderConfiguration(id: provider, enabled: true, order: 0))
+    }
+
+    func resolve(_ profile: WindowsProviderConfiguration) -> WindowsProviderCredentialRouteAuthority {
+        let provider = profile.id
         guard let credentialVault = self.credentialVault,
               WindowsProviderConfigurationCatalog.byProvider[provider] != nil
         else {
@@ -29,8 +39,12 @@ struct WindowsProviderCredentialRouteResolver: Sendable {
                 check: nil)
         }
         do {
-            let identity = try credentialVault.protectedBlobIdentity(provider)
-            let record = identity == nil ? nil : try credentialVault.load(provider)
+            let identity = try credentialVault.protectedBlobIdentity(
+                provider: provider,
+                profileID: profile.profileID)
+            let record = identity == nil
+                ? nil
+                : try credentialVault.load(provider, profileID: profile.profileID)
             let manualLabel = record.flatMap {
                 WindowsProviderConfigurationCatalog.credentialSet(
                     provider: provider,
@@ -41,7 +55,9 @@ struct WindowsProviderCredentialRouteResolver: Sendable {
                 manualLabel: manualLabel ?? (identity == nil ? nil : "Manual credential"),
                 captureError: nil,
                 check: {
-                    try credentialVault.protectedBlobIdentity(provider) == identity
+                    try credentialVault.protectedBlobIdentity(
+                        provider: provider,
+                        profileID: profile.profileID) == identity
                 })
         } catch {
             let captureError =
@@ -53,7 +69,9 @@ struct WindowsProviderCredentialRouteResolver: Sendable {
                 captureError: captureError,
                 check: {
                     do {
-                        _ = try credentialVault.protectedBlobIdentity(provider)
+                        _ = try credentialVault.protectedBlobIdentity(
+                            provider: provider,
+                            profileID: profile.profileID)
                         return false
                     } catch {
                         return (error as? WindowsProviderCredentialVaultError) == captureError
@@ -117,13 +135,13 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
             enabled,
             maximumConcurrentTasks: Self.maximumConcurrentProviderFetches)
         { provider in
-            await self.fetch(provider)
+            await self.fetch(provider).assigningProfile(provider)
         }
     }
 
     // swiftlint:disable:next function_body_length
     private func fetch(_ provider: WindowsProviderConfiguration) async -> WindowsProviderSnapshot {
-        let credentialRoute = self.credentialRouteResolver.resolve(provider.id)
+        let credentialRoute = self.credentialRouteResolver.resolve(provider)
         let configuredSource = WindowsProviderSourcePresentation.configuredFallback(
             configuration: provider,
             credentialLabel: credentialRoute.manualLabel)
@@ -152,11 +170,11 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
         if credentialRoute.manualSelected {
             var authorityCheck = credentialRoute.check
             do {
-                guard let record = try self.credentialRouteResolver.load(provider.id) else {
+                guard let record = try self.credentialRouteResolver.load(provider) else {
                     throw WindowsProviderCredentialVaultError.corruptedCredential
                 }
                 authorityCheck = {
-                    try self.credentialRouteResolver.load(provider.id)?.revision == record.revision
+                    try self.credentialRouteResolver.load(provider)?.revision == record.revision
                 }
                 let staged = try WindowsStagedProviderConfig.encodeManual(
                     provider: provider.id,
@@ -189,6 +207,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
                 }
                 return await self.cliClient.fetch(
                     provider: provider.id,
+                    profileID: provider.profileID,
                     invocation: invocation,
                     environmentOverrides: [:],
                     authorityCheck: authorityCheck)
@@ -255,6 +274,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
                 }
                 return await self.cliClient.fetch(
                     provider: provider.id,
+                    profileID: provider.profileID,
                     invocation: invocation,
                     environmentOverrides: environmentOverrides,
                     authorityCheck: credentialRoute.check)
@@ -288,6 +308,49 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
                 source: configuredSource,
                 authorityCheck: credentialRoute.check)
         }
+        if provider.id == .codex, let configuredHome = provider.codexHome {
+            do {
+                let home = try Self.resolveCodexHome(
+                    configuredHome,
+                    distribution: automaticCLI.distribution)
+                let config = try WindowsStagedProviderConfig.encodeCodexHome(home)
+                guard let invocation = await self.stagedInvocation(
+                    resolvedUsageCLI: automaticCLI,
+                    provider: provider.id,
+                    source: "auto",
+                    config: config,
+                    credentialPath: "Automatic",
+                    windowsDirectory: windowsDirectory,
+                    presentsAsAutomatic: true)
+                else {
+                    return Self.credentialFailure(
+                        provider: provider.id,
+                        path: "Automatic",
+                        source: .init(
+                            distributionLabel: automaticCLI.distribution,
+                            kind: .automatic,
+                            isResolved: false),
+                        error: WindowsCanonicalCLIError.executableUnavailable,
+                        authorityCheck: credentialRoute.check)
+                }
+                return await self.cliClient.fetch(
+                    provider: provider.id,
+                    profileID: provider.profileID,
+                    invocation: invocation,
+                    environmentOverrides: [:],
+                    authorityCheck: credentialRoute.check)
+            } catch {
+                return Self.credentialFailure(
+                    provider: provider.id,
+                    path: "Codex home",
+                    source: .init(
+                        distributionLabel: automaticCLI.distribution,
+                        kind: .automatic,
+                        isResolved: false),
+                    error: error,
+                    authorityCheck: credentialRoute.check)
+            }
+        }
         let invocation = WindowsCanonicalCLIInvocation.wsl(
             distribution: automaticCLI.distribution,
             executablePath: automaticCLI.executablePath,
@@ -296,6 +359,7 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
             windowsDirectory: windowsDirectory)
         return await self.cliClient.fetch(
             provider: provider.id,
+            profileID: provider.profileID,
             invocation: invocation,
             environmentOverrides: [:],
             authorityCheck: credentialRoute.check)
@@ -339,7 +403,8 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
         config: Data,
         credentialPath: String,
         executionMode: WindowsCanonicalCLIInvocation.ExecutionMode = .usage,
-        windowsDirectory: String) async -> WindowsCanonicalCLIInvocation?
+        windowsDirectory: String,
+        presentsAsAutomatic: Bool = false) async -> WindowsCanonicalCLIInvocation?
     {
         guard
             let bundledCLI = await self.bundledCLIDiscoveryCache.executablePath(
@@ -356,7 +421,36 @@ struct WindowsConfiguredProviderDataSource: WindowsProviderDataSource, Sendable 
             config: config,
             credentialPath: credentialPath,
             executionMode: executionMode,
-            windowsDirectory: windowsDirectory)
+            windowsDirectory: windowsDirectory,
+            presentsAsAutomatic: presentsAsAutomatic)
+    }
+
+    static func resolveCodexHome(
+        _ configuredHome: String,
+        distribution: String,
+        defaultLinuxHome: (() -> String?)? = nil,
+        directoryExists: ((String) -> Bool)? = nil) throws -> String
+    {
+        guard let normalized = WindowsProviderProfileValidation.normalizedCodexHome(configuredHome) else {
+            throw WindowsStagedProviderConfigError.invalidValue("Codex home")
+        }
+        let resolved: String
+        if normalized.hasPrefix("~/") {
+            let base = defaultLinuxHome?() ?? WindowsWSLDefaultUserHome.linuxPath(distributionName: distribution)
+            guard let base else { throw WindowsStagedProviderConfigError.invalidValue("Codex home") }
+            resolved = base + String(normalized.dropFirst())
+        } else {
+            resolved = normalized
+        }
+        let exists = directoryExists?(resolved)
+            ?? WindowsWSLDefaultUserHome.linuxDirectoryExists(
+                resolved,
+                distributionName: distribution)
+        guard exists else {
+            throw WindowsStagedProviderConfigError.validationRejected(
+                "The configured Codex home was not found in the selected WSL distribution.")
+        }
+        return resolved
     }
 
     struct ResolvedCLI: Equatable, Sendable {

@@ -39,7 +39,7 @@ static int64_t monotonic_milliseconds(void) {
 
 static void print_usage(void) {
   fputs("usage: CodexBarStagingLauncher --timeout-seconds N --provider ID "
-        "--source web|api|oauth|cli --mode usage|diagnose\n",
+        "--source auto|web|api|oauth|cli --mode usage|diagnose\n",
         stderr);
 }
 
@@ -75,7 +75,7 @@ static bool valid_provider(const char *value) {
 }
 
 static bool valid_source(const char *value) {
-  return strcmp(value, "web") == 0 || strcmp(value, "api") == 0 ||
+  return strcmp(value, "auto") == 0 || strcmp(value, "web") == 0 || strcmp(value, "api") == 0 ||
          strcmp(value, "oauth") == 0 || strcmp(value, "cli") == 0;
 }
 

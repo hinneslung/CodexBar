@@ -46,13 +46,17 @@ final class WindowsPopupWindow {
     private static let refreshIconGlyph = "\u{E72C}"
     private static let searchIconGlyph = "\u{E721}"
     private static let settingsIconGlyph = "\u{E713}"
+    private static let copyIconGlyph = "\u{E8C8}"
+    private static let deleteIconGlyph = "\u{E74D}"
+    private static let codexHomeHint =
+        "Leave blank to use the default Codex sign-in. Example: ~/.codex-personal"
 
     private enum Page: Equatable {
         case overview
         case provider(Int)
         case switcher
         case settings
-        case configure(WindowsProviderID)
+        case configure(WindowsProviderProfileID)
     }
 
     private enum Action {
@@ -63,12 +67,14 @@ final class WindowsPopupWindow {
         case provider(Int)
         case toggleUsageBarsShowUsed
         case toggleRunAtStartup
-        case toggleProvider(WindowsProviderID)
-        case moveProvider(WindowsProviderID, Int)
-        case moveProviderToTop(WindowsProviderID)
-        case configureProvider(WindowsProviderID)
-        case saveProvider(WindowsProviderID)
-        case clearProvider(WindowsProviderID)
+        case toggleProvider(WindowsProviderProfileID)
+        case moveProvider(WindowsProviderProfileID, Int)
+        case moveProviderToTop(WindowsProviderProfileID)
+        case configureProvider(WindowsProviderProfileID)
+        case saveProvider(WindowsProviderProfileID)
+        case clearProvider(WindowsProviderProfileID)
+        case addProfile(WindowsProviderID)
+        case removeProfile(WindowsProviderProfileID)
         case toggleCredentialHelp
         case openProviderResource(WindowsProviderID)
     }
@@ -99,6 +105,8 @@ final class WindowsPopupWindow {
     private var editBrush: HBRUSH?
     private var configurationSourceControl: HWND?
     private var configurationCredentialControl: HWND?
+    private var configurationProfileNameControl: HWND?
+    private var configurationCodexHomeControl: HWND?
     private var configurationFieldControls: [String: HWND] = [:]
     private var configurationCapabilities: WindowsProviderConfigurationSchema?
     private var configurationStatus: WindowsUpstreamConfigurationStatus?
@@ -113,7 +121,7 @@ final class WindowsPopupWindow {
     private var configurationCredentialSetDraftID: String?
     private var configurationCredentialSelectionTouched = false
     private var configurationCredentialHelpExpanded = false
-    private var configurationLastAppliedProvider: WindowsProviderID?
+    private var configurationLastAppliedProfile: WindowsProviderProfileID?
     private var configurationReturnPage: Page = .settings
     private let availableWSLDistributions = WindowsWSLDistributionRegistry.names()
     private let providerLogoAtlas = WindowsProviderLogoAtlas.load()
@@ -271,8 +279,8 @@ final class WindowsPopupWindow {
 
     func updateConfiguration(_ configuration: WindowsAppConfiguration) {
         self.configuration = configuration
-        if case let .configure(provider) = self.page,
-           !configuration.providers.contains(where: { $0.id == provider })
+        if case let .configure(profileID) = self.page,
+           !configuration.providers.contains(where: { $0.profileID == profileID })
         {
             self.destroyConfigurationControls()
             self.page = .settings
@@ -295,14 +303,15 @@ final class WindowsPopupWindow {
     func completeProviderConfigurationTask(
         requestID: Foundation.UUID,
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
         status: WindowsUpstreamConfigurationStatus?,
         didApply: Bool,
         safeErrorText: String?,
         canClearCredential: Bool)
     {
         guard self.configurationPendingRequestID == requestID,
-              case let .configure(currentProvider) = self.page,
-              currentProvider == provider
+              case let .configure(currentProfile) = self.page,
+              currentProfile == profileID
         else { return }
         self.configurationPendingRequestID = nil
         self.configurationCapabilitiesError = safeErrorText
@@ -326,7 +335,7 @@ final class WindowsPopupWindow {
                 self.updateCredentialMethodSelection()
                 self.rebuildProviderFieldControls()
             }
-            self.configurationLastAppliedProvider = provider
+            self.configurationLastAppliedProfile = profileID
         } else if credentialSelectionChanged {
             self.configurationCredentialHelpExpanded = false
             self.rebuildProviderFieldControls()
@@ -420,6 +429,17 @@ final class WindowsPopupWindow {
                         _ = SetWindowTextW(fieldEntry.value, pointer)
                     }
                 }
+                return 0
+            }
+            let editedControl = HWND(bitPattern: UInt(bitPattern: Int(lParam)))
+            if UInt16(truncatingIfNeeded: wParam >> 16) == UInt16(EN_CHANGE),
+               editedControl == self.configurationProfileNameControl
+               || editedControl == self.configurationCodexHomeControl
+            {
+                self.configurationCapabilitiesError = nil
+                self.configurationDraftValidationError = nil
+                self.resizeForCurrentPage()
+                _ = InvalidateRect(self.window, nil, false)
                 return 0
             }
             if let refreshControl = self.refreshIntervalControl,
@@ -566,8 +586,8 @@ final class WindowsPopupWindow {
             self.drawSwitcher(dc: memoryDC, client: client)
         case .settings:
             self.drawSettings(dc: memoryDC, client: client)
-        case let .configure(provider):
-            self.drawProviderConfiguration(dc: memoryDC, client: client, provider: provider)
+        case let .configure(profileID):
+            self.drawProviderConfiguration(dc: memoryDC, client: client, profileID: profileID)
         }
         _ = BitBlt(paintDC, 0, 0, width, height, memoryDC, 0, 0, DWORD(SRCCOPY))
     }
@@ -617,7 +637,7 @@ final class WindowsPopupWindow {
             ?? WindowsProviderBalanceFormatter.compact(row.balanceText)
             ?? "—"
         WindowsDashboardDrawing.text(
-            row.provider.displayName,
+            row.displayName,
             dc: dc,
             rect: RECT(
                 left: badge.right + self.scaled(8),
@@ -724,7 +744,7 @@ final class WindowsPopupWindow {
         self.drawRule(dc: dc, client: client, y: y)
         y += self.scaled(10)
         let sourceValue =
-            self.configuration.providers.first(where: { $0.id == row.provider }).map {
+            self.configuration.providers.first(where: { $0.profileID == row.profileID }).map {
                 WindowsProviderSettingsPresentation.subtitle(
                     configuration: $0,
                     sourceText: row.sourceText)
@@ -746,12 +766,12 @@ final class WindowsPopupWindow {
                 format: UINT(DT_LEFT | DT_TOP | DT_WORDBREAK | DT_END_ELLIPSIS))
         }
         self.endContentClip(dc: dc, state: contentState)
-        self.drawHeader(dc: dc, client: client, title: row.provider.displayName, provider: row.provider)
+        self.drawHeader(dc: dc, client: client, title: row.displayName, provider: row.provider)
         self.drawFooter(
             dc: dc,
             client: client,
             backAction: .back,
-            settingsAction: .configureProvider(row.provider))
+            settingsAction: .configureProvider(row.profileID))
     }
 
     private func drawDetailWindow(
@@ -819,7 +839,7 @@ final class WindowsPopupWindow {
                         right: inset + self.scaled(18),
                         bottom: rect.top + self.scaled(27)))
                 WindowsDashboardDrawing.text(
-                    row.provider.displayName,
+                    row.displayName,
                     dc: dc,
                     rect: RECT(
                         left: inset + self.scaled(28),
@@ -963,7 +983,7 @@ final class WindowsPopupWindow {
             }
 
             for provider in section.providers {
-                let enabledPosition = enabledProviders.firstIndex(where: { $0.id == provider.id })
+                let enabledPosition = enabledProviders.firstIndex(where: { $0.profileID == provider.profileID })
                 let rect = RECT(
                     left: 0,
                     top: y,
@@ -1005,7 +1025,11 @@ final class WindowsPopupWindow {
                         bottom: rect.top + self.scaled(31))
                     self.drawProviderLogo(dc: dc, provider: provider.id, rect: logoRect)
                     WindowsDashboardDrawing.text(
-                        provider.id.displayName,
+                        WindowsProviderProfilePresentation.displayName(
+                            provider: provider.id,
+                            profileName: provider.profileName,
+                            distinguishesProfile: self.configuration.profileCount(for: provider.id) > 1
+                                || provider.profileName != WindowsProviderProfileValidation.defaultName),
                         dc: dc,
                         rect: RECT(
                             left: logoRect.right + self.scaled(8),
@@ -1019,7 +1043,7 @@ final class WindowsPopupWindow {
                     WindowsDashboardDrawing.text(
                         WindowsProviderSettingsPresentation.subtitle(
                             configuration: provider,
-                            sourceText: self.presentation.rows.first(where: { $0.provider == provider.id })?
+                            sourceText: self.presentation.rows.first(where: { $0.profileID == provider.profileID })?
                                 .sourceText),
                         dc: dc,
                         rect: RECT(
@@ -1079,19 +1103,19 @@ final class WindowsPopupWindow {
                         format: UINT(DT_CENTER | DT_VCENTER | DT_SINGLELINE))
                     if let hitRect = self.contentHitRect(rect, client: client) {
                         self.hitTargets.append(
-                            HitTarget(rect: hitRect, action: .configureProvider(provider.id)))
+                            HitTarget(rect: hitRect, action: .configureProvider(provider.profileID)))
                     }
                     if !isUnavailable {
                         self.hitTargets.append(
-                            HitTarget(rect: toggleRect, action: .toggleProvider(provider.id)))
+                            HitTarget(rect: toggleRect, action: .toggleProvider(provider.profileID)))
                     }
                     if let enabledPosition, enabledPosition > 0 {
                         self.hitTargets.append(
-                            HitTarget(rect: topRect, action: .moveProviderToTop(provider.id)))
-                        self.hitTargets.append(HitTarget(rect: upRect, action: .moveProvider(provider.id, -1)))
+                            HitTarget(rect: topRect, action: .moveProviderToTop(provider.profileID)))
+                        self.hitTargets.append(HitTarget(rect: upRect, action: .moveProvider(provider.profileID, -1)))
                     }
                     if let enabledPosition, enabledPosition + 1 < enabledProviders.count {
-                        self.hitTargets.append(HitTarget(rect: downRect, action: .moveProvider(provider.id, 1)))
+                        self.hitTargets.append(HitTarget(rect: downRect, action: .moveProvider(provider.profileID, 1)))
                     }
                 }
                 y = rect.bottom
@@ -1216,11 +1240,16 @@ final class WindowsPopupWindow {
     }
 
     // swiftlint:disable:next function_body_length
-    private func drawProviderConfiguration(dc: HDC?, client: RECT, provider: WindowsProviderID) {
-        guard let configuration = self.configuration.providers.first(where: { $0.id == provider })
+    private func drawProviderConfiguration(
+        dc: HDC?,
+        client: RECT,
+        profileID: WindowsProviderProfileID)
+    {
+        guard let configuration = self.configuration.providers.first(where: { $0.profileID == profileID })
         else {
             return
         }
+        let provider = configuration.id
         if let unavailable = WindowsProviderConfigurationCatalog.unavailableInfo(for: provider) {
             self.drawUnavailableProviderConfiguration(
                 dc: dc,
@@ -1233,13 +1262,21 @@ final class WindowsPopupWindow {
         let inset = self.scaled(Metrics.horizontalInset)
         var y = self.scaled(Metrics.headerHeight + 12) - self.scrollOffset
         WindowsDashboardDrawing.text(
+            "Profile name",
+            dc: dc,
+            rect: RECT(left: inset, top: y, right: inset + self.scaled(82), bottom: y + self.scaled(28)),
+            color: WindowsDashboardPalette.captionText,
+            font: self.secondaryFont,
+            format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE))
+        y += self.scaled(42)
+        WindowsDashboardDrawing.text(
             "WSL distro",
             dc: dc,
             rect: RECT(left: inset, top: y, right: inset + self.scaled(82), bottom: y + self.scaled(28)),
             color: WindowsDashboardPalette.captionText,
             font: self.secondaryFont,
             format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE))
-        let draft = self.configuredProvider(provider) ?? configuration
+        let draft = self.configuredProvider(profileID) ?? configuration
         y += self.scaled(42)
         WindowsDashboardDrawing.text(
             "Credentials",
@@ -1249,6 +1286,29 @@ final class WindowsPopupWindow {
             font: self.secondaryFont,
             format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE))
         y += self.scaled(42)
+        if provider == .codex {
+            let hintHeight = self.configurationWrappedTextHeight(Self.codexHomeHint)
+                ?? self.scaled(36)
+            WindowsDashboardDrawing.text(
+                "Codex home",
+                dc: dc,
+                rect: RECT(left: inset, top: y, right: client.right - inset, bottom: y + self.scaled(18)),
+                color: WindowsDashboardPalette.captionText,
+                font: self.secondaryFont,
+                format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE))
+            WindowsDashboardDrawing.text(
+                Self.codexHomeHint,
+                dc: dc,
+                rect: RECT(
+                    left: inset,
+                    top: y + self.scaled(48),
+                    right: client.right - inset,
+                    bottom: y + self.scaled(48) + hintHeight),
+                color: WindowsDashboardPalette.captionText,
+                font: self.secondaryFont,
+                format: UINT(DT_LEFT | DT_TOP | DT_WORDBREAK))
+            y += self.scaled(50) + hintHeight
+        }
         y = self.drawCredentialHelp(dc: dc, client: client, top: y)
         if let capabilities = self.configurationCapabilities,
            capabilities.provider == provider
@@ -1366,7 +1426,19 @@ final class WindowsPopupWindow {
                 format: UINT(DT_LEFT | DT_TOP | DT_WORDBREAK))
         }
         self.endContentClip(dc: dc, state: contentState)
-        self.drawHeader(dc: dc, client: client, title: provider.displayName, provider: provider)
+        let profileCount = self.configuration.profileCount(for: provider)
+        let title = WindowsProviderProfilePresentation.displayName(
+            provider: provider,
+            profileName: configuration.profileName,
+            distinguishesProfile: profileCount > 1
+                || configuration.profileName != WindowsProviderProfileValidation.defaultName)
+        self.drawHeader(
+            dc: dc,
+            client: client,
+            title: title,
+            provider: provider,
+            addProfileProvider: provider,
+            removeProfileID: profileCount > 1 ? profileID : nil)
         let showsClearAction =
             self.configurationCanClearCredential
                 && !self.hasDirtyProviderDraft
@@ -1376,9 +1448,9 @@ final class WindowsPopupWindow {
             client: client,
             backAction: .back,
             saveAction: showsClearAction
-                ? .clearProvider(provider)
+                ? .clearProvider(profileID)
                 : (self.hasDirtyProviderDraft && self.configurationPendingRequestID == nil
-                    ? .saveProvider(provider)
+                    ? .saveProvider(profileID)
                     : nil),
             saveLabel: showsClearAction ? "Clear" : "Apply")
     }
@@ -1454,6 +1526,14 @@ final class WindowsPopupWindow {
             configuration.sourceMode == .wsl
                 ? configuration.wslDistro
                 : nil
+        self.configurationProfileNameControl = self.makeConfigurationEditControl(
+            text: configuration.profileName,
+            limit: WindowsProviderProfileValidation.maximumNameCharacters)
+        if configuration.id == .codex {
+            self.configurationCodexHomeControl = self.makeConfigurationEditControl(
+                text: configuration.codexHome ?? "",
+                limit: WindowsProviderProfileValidation.maximumCodexHomeCharacters)
+        }
         self.configurationSourceControl = WindowsWideString.withPointer("COMBOBOX") { className in
             CreateWindowExW(
                 0,
@@ -1511,10 +1591,38 @@ final class WindowsPopupWindow {
                     1)
             }
         }
-        self.installProviderConfigurationSchema(provider: configuration.id)
+        self.installProviderConfigurationSchema(configuration: configuration)
     }
 
-    private func installProviderConfigurationSchema(provider: WindowsProviderID) {
+    private func makeConfigurationEditControl(text: String, limit: Int) -> HWND? {
+        guard let window = self.window else { return nil }
+        let control = WindowsWideString.withPointer("EDIT") { className in
+            CreateWindowExW(
+                0,
+                className,
+                nil,
+                DWORD(WS_CHILD | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL),
+                0,
+                0,
+                0,
+                0,
+                window,
+                nil,
+                self.instance,
+                nil)
+        }
+        guard let control else { return nil }
+        WindowsVisualTheme.apply(toControl: control)
+        _ = SendMessageW(control, UINT(EM_SETLIMITTEXT), WPARAM(limit), 0)
+        if let bodyFont = self.bodyFont {
+            _ = SendMessageW(control, UINT(WM_SETFONT), WPARAM(UInt(bitPattern: bodyFont)), 1)
+        }
+        WindowsWideString.setWindowText(control, text)
+        return control
+    }
+
+    private func installProviderConfigurationSchema(configuration: WindowsProviderConfiguration) {
+        let provider = configuration.id
         let schema = WindowsProviderConfigurationCatalog.byProvider[provider]
         self.configurationCapabilities = schema
         self.configurationCapabilitiesError = nil
@@ -1526,7 +1634,7 @@ final class WindowsPopupWindow {
         self.configurationCredentialHelpExpanded = false
         self.populateCredentialMethods(schema)
         self.rebuildProviderFieldControls()
-        if schema != nil, let configuration = self.configuredProvider(provider) {
+        if schema != nil, let configuration = self.configuredProvider(configuration.profileID) {
             self.configurationPendingRequestID = WindowsTrayApplication.current?
                 .requestProviderConfigurationStatus(provider: provider, configuration: configuration)
         }
@@ -1707,6 +1815,8 @@ final class WindowsPopupWindow {
     }
 
     private func destroyConfigurationControls() {
+        if let control = self.configurationProfileNameControl { _ = DestroyWindow(control) }
+        if let control = self.configurationCodexHomeControl { _ = DestroyWindow(control) }
         if let sourceControl = self.configurationSourceControl {
             _ = DestroyWindow(sourceControl)
         }
@@ -1722,13 +1832,15 @@ final class WindowsPopupWindow {
         self.resetProviderFieldControls()
         self.configurationSourceControl = nil
         self.configurationCredentialControl = nil
+        self.configurationProfileNameControl = nil
+        self.configurationCodexHomeControl = nil
         self.refreshIntervalControl = nil
         self.disabledProviderSearchControl = nil
         self.configurationSourceDraft = nil
         self.configurationCredentialSetDraftID = nil
         self.configurationCredentialSelectionTouched = false
         self.configurationCredentialHelpExpanded = false
-        self.configurationLastAppliedProvider = nil
+        self.configurationLastAppliedProfile = nil
         self.configurationCapabilitiesError = nil
         self.configurationDraftValidationError = nil
         self.configurationStatus = nil
@@ -1743,12 +1855,24 @@ final class WindowsPopupWindow {
         let inset = self.scaled(Metrics.horizontalInset)
         let viewportTop = self.scaled(Metrics.headerHeight)
         let viewportBottom = client.bottom - self.scaled(Metrics.footerHeight)
+        if let control = self.configurationProfileNameControl {
+            let y = self.scaled(Metrics.headerHeight + 12) - self.scrollOffset
+            self.layoutConfigurationControl(
+                control,
+                rect: RECT(
+                    left: inset + self.scaled(86),
+                    top: y,
+                    right: client.right - inset,
+                    bottom: y + self.scaled(28)),
+                viewportTop: viewportTop,
+                viewportBottom: viewportBottom)
+        }
         if let sourceControl = self.configurationSourceControl {
             guard case .configure = self.page else {
                 _ = ShowWindow(sourceControl, SW_HIDE)
                 return
             }
-            let y = self.scaled(Metrics.headerHeight + 12) - self.scrollOffset
+            let y = self.scaled(Metrics.headerHeight + 54) - self.scrollOffset
             let rect = RECT(
                 left: inset + self.scaled(86),
                 top: y,
@@ -1772,7 +1896,7 @@ final class WindowsPopupWindow {
                 _ = ShowWindow(credentialControl, SW_HIDE)
                 return
             }
-            let y = self.scaled(Metrics.headerHeight + 54) - self.scrollOffset
+            let y = self.scaled(Metrics.headerHeight + 96) - self.scrollOffset
             let rect = RECT(
                 left: inset + self.scaled(86),
                 top: y,
@@ -1790,6 +1914,18 @@ final class WindowsPopupWindow {
             } else {
                 _ = ShowWindow(credentialControl, SW_HIDE)
             }
+        }
+        if let control = self.configurationCodexHomeControl {
+            let y = self.scaled(Metrics.headerHeight + 158) - self.scrollOffset
+            self.layoutConfigurationControl(
+                control,
+                rect: RECT(
+                    left: inset,
+                    top: y,
+                    right: client.right - inset,
+                    bottom: y + self.scaled(26)),
+                viewportTop: viewportTop,
+                viewportBottom: viewportBottom)
         }
         if case .configure = self.page {
             for (index, field) in self.activeConfigurationFields.enumerated() {
@@ -1875,18 +2011,54 @@ final class WindowsPopupWindow {
         }
     }
 
+    private func layoutConfigurationControl(
+        _ control: HWND,
+        rect: RECT,
+        viewportTop: Int32,
+        viewportBottom: Int32)
+    {
+        if rect.top >= viewportTop, rect.bottom <= viewportBottom {
+            _ = SetWindowPos(
+                control,
+                nil,
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                UINT(SWP_NOZORDER | SWP_SHOWWINDOW))
+        } else {
+            _ = ShowWindow(control, SW_HIDE)
+        }
+    }
+
     private func configurationFieldRowTop(index: Int) -> Int32 {
         let priorHeight = self.activeConfigurationFields.prefix(index).reduce(Int32(0)) {
             $0 + self.configurationFieldRowHeight($1)
         }
-        return self.scaled(Metrics.headerHeight + 96) + self.configurationCredentialHelpHeight
+        return self.scaled(Metrics.headerHeight + 138)
+            + (self.activeConfigurationProvider == .codex ? self.configurationCodexHomeBlockHeight : 0)
+            + self.configurationCredentialHelpHeight
             + priorHeight - self.scrollOffset
+    }
+
+    private var activeConfigurationProvider: WindowsProviderID? {
+        guard case let .configure(profileID) = self.page else { return nil }
+        return self.configuration.providers.first(where: { $0.profileID == profileID })?.id
     }
 
     private func configurationAutomaticHintHeight(provider: WindowsProviderID) -> Int32 {
         let text = WindowsProviderConfigurationCatalog.automaticCredentialDescription(
             provider: provider)
-        guard let window = self.window, let dc = GetDC(window) else { return self.scaled(38) }
+        return (self.configurationWrappedTextHeight(text) ?? self.scaled(32)) + self.scaled(6)
+    }
+
+    private var configurationCodexHomeBlockHeight: Int32 {
+        self.scaled(50)
+            + (self.configurationWrappedTextHeight(Self.codexHomeHint) ?? self.scaled(36))
+    }
+
+    private func configurationWrappedTextHeight(_ text: String) -> Int32? {
+        guard let window = self.window, let dc = GetDC(window) else { return nil }
         defer { _ = ReleaseDC(window, dc) }
         let oldFont = self.secondaryFont.map { SelectObject(dc, $0) }
         defer {
@@ -1907,7 +2079,7 @@ final class WindowsPopupWindow {
                 &rect,
                 UINT(DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX))
         }
-        return max(self.scaled(18), rect.bottom - rect.top) + self.scaled(6)
+        return max(self.scaled(18), rect.bottom - rect.top)
     }
 
     private var configurationCredentialHelpHeight: Int32 {
@@ -2059,20 +2231,28 @@ final class WindowsPopupWindow {
         return value == (self.configurationStatus?.companionValues[field.id] ?? "")
     }
 
-    private func configuredProvider(_ provider: WindowsProviderID) -> WindowsProviderConfiguration? {
-        guard var configuration = self.configuration.providers.first(where: { $0.id == provider })
+    private func configuredProvider(_ profileID: WindowsProviderProfileID) -> WindowsProviderConfiguration? {
+        guard var configuration = self.configuration.providers.first(where: { $0.profileID == profileID })
         else {
             return nil
         }
         configuration.sourceMode = self.configurationSourceDraft == nil ? .automatic : .wsl
         configuration.wslDistro = self.configurationSourceDraft
+        if let control = self.configurationProfileNameControl {
+            configuration.profileName = Self.windowText(control)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if configuration.id == .codex, let control = self.configurationCodexHomeControl {
+            let value = Self.windowText(control).trimmingCharacters(in: .whitespacesAndNewlines)
+            configuration.codexHome = value.isEmpty ? nil : value
+        }
         return configuration
     }
 
     private var hasDirtyProviderDraft: Bool {
-        guard case let .configure(provider) = self.page,
-              let saved = self.configuration.providers.first(where: { $0.id == provider }),
-              let draft = self.configuredProvider(provider)
+        guard case let .configure(profileID) = self.page,
+              let saved = self.configuration.providers.first(where: { $0.profileID == profileID }),
+              let draft = self.configuredProvider(profileID)
         else { return false }
         return WindowsProviderConfigurationPageState.hasUnsavedChanges(draft: draft, saved: saved)
             || self.hasDirtyCredentialDraft
@@ -2123,21 +2303,46 @@ final class WindowsPopupWindow {
         return true
     }
 
+    private func validatesProfileDraft(_ configuration: WindowsProviderConfiguration) -> Bool {
+        guard WindowsProviderProfileValidation.normalizedName(configuration.profileName)
+            == configuration.profileName
+        else {
+            self.configurationDraftValidationError =
+                "Profile names cannot contain control or bidirectional formatting characters."
+            return false
+        }
+        if WindowsProviderProfileValidation.hasDuplicateName(
+            configuration,
+            among: self.configuration.providers)
+        {
+            self.configurationDraftValidationError = "Choose a different profile name for this provider."
+            return false
+        }
+        if let home = configuration.codexHome,
+           WindowsProviderProfileValidation.normalizedCodexHome(home) != home
+        {
+            self.configurationDraftValidationError =
+                "Codex home must be an absolute Linux path or start with ~/ and contain no command syntax."
+            return false
+        }
+        return true
+    }
+
     private func configurationErrorText(
         provider: WindowsProviderID,
         draft: WindowsProviderConfiguration) -> String?
     {
-        guard let saved = self.configuration.providers.first(where: { $0.id == provider }) else {
+        guard let saved = self.configuration.providers.first(where: { $0.profileID == draft.profileID }) else {
             return nil
         }
         guard
             let error = WindowsProviderConfigurationPageState.errorText(
                 provider: provider,
-                lastAppliedProvider: self.configurationLastAppliedProvider,
+                lastAppliedProvider: self.configurationLastAppliedProfile == draft.profileID ? provider : nil,
                 draft: draft,
                 saved: saved,
                 isRefreshing: self.presentation.isRefreshing,
-                row: self.presentation.rows.first(where: { $0.provider == provider }))
+                row: self.presentation.rows.first(where: { $0.profileID == draft.profileID }))
         else { return nil }
         return "\(draft.sourceDisplayName): \(error)"
     }
@@ -2152,7 +2357,9 @@ final class WindowsPopupWindow {
         dc: HDC?,
         client: RECT,
         title: String,
-        provider: WindowsProviderID? = nil)
+        provider: WindowsProviderID? = nil,
+        addProfileProvider: WindowsProviderID? = nil,
+        removeProfileID: WindowsProviderProfileID? = nil)
     {
         let height = self.scaled(Metrics.headerHeight)
         WindowsDashboardDrawing.line(
@@ -2170,17 +2377,61 @@ final class WindowsPopupWindow {
                 bottom: self.scaled(31))
             self.drawProviderLogo(dc: dc, provider: provider, rect: mark)
         }
+        var titleRight = client.right - inset
+        var actionRight = client.right - self.scaled(8)
+        if let removeProfileID {
+            actionRight = self.drawHeaderAction(
+                glyph: Self.deleteIconGlyph,
+                right: actionRight,
+                height: height,
+                action: .removeProfile(removeProfileID),
+                dc: dc)
+        }
+        if let addProfileProvider {
+            actionRight = self.drawHeaderAction(
+                glyph: Self.copyIconGlyph,
+                right: actionRight,
+                height: height,
+                action: .addProfile(addProfileProvider),
+                dc: dc)
+        }
+        if addProfileProvider != nil || removeProfileID != nil {
+            titleRight = actionRight - self.scaled(4)
+        }
         WindowsDashboardDrawing.text(
             title,
             dc: dc,
             rect: RECT(
                 left: provider == nil ? inset : inset + self.scaled(28),
                 top: 0,
-                right: client.right - inset,
+                right: titleRight,
                 bottom: height),
             color: WindowsDashboardPalette.primaryText,
             font: self.bodySemiboldFont,
             format: UINT(DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS))
+    }
+
+    private func drawHeaderAction(
+        glyph: String,
+        right: Int32,
+        height: Int32,
+        action: Action,
+        dc: HDC?) -> Int32
+    {
+        let rect = RECT(
+            left: right - self.scaled(34),
+            top: 0,
+            right: right,
+            bottom: height)
+        WindowsDashboardDrawing.text(
+            glyph,
+            dc: dc,
+            rect: rect,
+            color: WindowsDashboardPalette.secondaryText,
+            font: self.systemIconFont,
+            format: UINT(DT_CENTER | DT_VCENTER | DT_SINGLELINE))
+        self.hitTargets.append(HitTarget(rect: rect, action: action))
+        return rect.left
     }
 
     private func drawFooter(
@@ -2436,19 +2687,21 @@ final class WindowsPopupWindow {
             WindowsTrayApplication.current?.moveProvider(provider, direction: direction)
         case let .moveProviderToTop(provider):
             WindowsTrayApplication.current?.moveProviderToTop(provider)
-        case let .configureProvider(provider):
+        case let .configureProvider(profileID):
             self.configurationReturnPage = self.page
             self.destroyConfigurationControls()
-            self.page = .configure(provider)
+            self.page = .configure(profileID)
             self.scrollOffset = 0
-            self.configurationLastAppliedProvider = nil
-            if let configuration = self.configuration.providers.first(where: { $0.id == provider }) {
+            self.configurationLastAppliedProfile = nil
+            if let configuration = self.configuration.providers.first(where: { $0.profileID == profileID }) {
                 self.ensureConfigurationControls(configuration)
             }
             self.resizeForCurrentPage()
             self.layoutConfigurationControls()
-        case let .saveProvider(provider):
-            guard let configuration = self.configuredProvider(provider) else { break }
+        case let .saveProvider(profileID):
+            guard let configuration = self.configuredProvider(profileID) else { break }
+            let provider = configuration.id
+            guard self.validatesProfileDraft(configuration) else { break }
             guard self.validatesCredentialDraft() else {
                 self.configurationDraftValidationError =
                     "Enter valid values for every required field before applying this credential method."
@@ -2463,13 +2716,14 @@ final class WindowsPopupWindow {
                         configuration: configuration,
                         credentialSetID: self.configurationCredentialSetDraftID,
                         values: self.providerCredentialValues())
-            } else if configuration != self.configuration.providers.first(where: { $0.id == provider }),
+            } else if configuration != self.configuration.providers.first(where: { $0.profileID == profileID }),
                       WindowsTrayApplication.current?.updateProviderConfiguration(configuration) == true
             {
-                self.configurationLastAppliedProvider = provider
+                self.configurationLastAppliedProfile = profileID
             }
-        case let .clearProvider(provider):
-            guard let configuration = self.configuredProvider(provider) else { break }
+        case let .clearProvider(profileID):
+            guard let configuration = self.configuredProvider(profileID) else { break }
+            let provider = configuration.id
             self.configurationCapabilitiesError = nil
             self.configurationDraftValidationError = nil
             self.configurationPendingRequestID = WindowsTrayApplication.current?
@@ -2478,6 +2732,21 @@ final class WindowsPopupWindow {
                     configuration: configuration,
                     credentialSetID: nil,
                     values: [:])
+        case let .addProfile(provider):
+            guard let profile = WindowsTrayApplication.current?.addProviderProfile(provider) else { break }
+            self.destroyConfigurationControls()
+            self.page = .configure(profile.profileID)
+            self.scrollOffset = 0
+            self.configurationLastAppliedProfile = nil
+            self.ensureConfigurationControls(profile)
+            self.resizeForCurrentPage()
+            self.layoutConfigurationControls()
+        case let .removeProfile(profileID):
+            guard let profile = self.configuration.providers.first(where: { $0.profileID == profileID }),
+                  self.configuration.profileCount(for: profile.id) > 1
+            else { break }
+            self.configurationPendingRequestID = WindowsTrayApplication.current?
+                .requestRemoveProviderProfile(profile)
         case .toggleCredentialHelp:
             self.configurationCredentialHelpExpanded.toggle()
             self.scrollOffset = min(self.scrollOffset, self.maximumScrollOffset())
@@ -2617,11 +2886,14 @@ final class WindowsPopupWindow {
     }
 
     private func configurationContentHeight() -> Int32 {
-        guard case let .configure(provider) = self.page else { return self.scaled(110) }
+        guard case let .configure(profileID) = self.page,
+              let configuration = self.configuration.providers.first(where: { $0.profileID == profileID })
+        else { return self.scaled(110) }
+        let provider = configuration.id
         if !WindowsProviderConfigurationCatalog.supportsConfigurationControls(for: provider) {
             return self.scaled(160)
         }
-        let draft = self.configuredProvider(provider)
+        let draft = self.configuredProvider(profileID)
         let errorHeight: Int32 =
             if self.configurationCapabilitiesError != nil || self.configurationDraftValidationError != nil
                 || (draft.map {
@@ -2640,7 +2912,8 @@ final class WindowsPopupWindow {
             self.configurationCredentialSetDraftID == nil
                 ? self.configurationAutomaticHintHeight(provider: provider)
                 : 0
-        return self.scaled(96 + loadingHeight + errorHeight)
+        return self.scaled(180 + loadingHeight + errorHeight)
+            + (provider == .codex ? self.configurationCodexHomeBlockHeight : 0)
             + self.configurationCredentialHelpHeight
             + fieldsHeight
             + automaticHintHeight

@@ -38,6 +38,9 @@ int main(int argc, char **argv) {
     expected = expected_diagnose;
     expected_count = 7;
     success = "fixture-diagnose-ok";
+  } else if (argc > 5 && strcmp(argv[5], "auto") == 0) {
+    expected_usage[5] = "auto";
+    success = "fixture-auto-ok";
   }
   if (argc != expected_count) {
     return 24;

@@ -114,6 +114,35 @@ enum WindowsStagedProviderConfig {
             derivesManualCookieSource: false)
     }
 
+    static func encodeCodexHome(_ path: String) throws -> Data {
+        guard let path = WindowsProviderProfileValidation.normalizedCodexHome(path),
+              path.hasPrefix("/")
+        else { throw WindowsStagedProviderConfigError.invalidValue("Codex home") }
+        let payload = ConfigPayload(
+            version: 1,
+            providers: [
+                ProviderPayload(
+                    id: WindowsProviderID.codex.rawValue,
+                    enabled: true,
+                    source: "auto",
+                    apiKey: nil,
+                    secretKey: nil,
+                    cookieHeader: nil,
+                    cookieSource: nil,
+                    region: nil,
+                    workspaceID: nil,
+                    enterpriseHost: nil,
+                    tokenAccounts: nil,
+                    codexActiveSource: CodexActiveSourcePayload(kind: "liveSystem", homePath: path),
+                    codexProfileHomePaths: [path]),
+            ])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(payload)
+        guard data.count <= self.maximumBytes else { throw WindowsStagedProviderConfigError.payloadTooLarge }
+        return data
+    }
+
     private static func encode(
         provider: WindowsProviderID,
         source: String,
@@ -138,7 +167,9 @@ enum WindowsStagedProviderConfig {
                     region: values[.region],
                     workspaceID: values[.workspaceID],
                     enterpriseHost: values[.enterpriseHost],
-                    tokenAccounts: tokenAccountToken.map(Self.ephemeralTokenAccounts)),
+                    tokenAccounts: tokenAccountToken.map(Self.ephemeralTokenAccounts),
+                    codexActiveSource: nil,
+                    codexProfileHomePaths: nil),
             ])
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -179,6 +210,13 @@ enum WindowsStagedProviderConfig {
         let workspaceID: String?
         let enterpriseHost: String?
         let tokenAccounts: TokenAccountDataPayload?
+        let codexActiveSource: CodexActiveSourcePayload?
+        let codexProfileHomePaths: [String]?
+    }
+
+    private struct CodexActiveSourcePayload: Encodable {
+        let kind: String
+        let homePath: String
     }
 
     private struct TokenAccountDataPayload: Encodable {

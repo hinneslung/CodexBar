@@ -166,6 +166,25 @@ enum WindowsWSLDefaultUserHome {
         return "/home/\(username)"
     }
 
+    static func linuxDirectoryExists(
+        _ linuxPath: String,
+        distributionName: String,
+        fileManager: FileManager = .default) -> Bool
+    {
+        guard linuxPath.hasPrefix("/"), !linuxPath.contains("\\"),
+              WindowsWSLDistributionRegistry.isSafeDistributionName(distributionName)
+        else { return false }
+        let components = linuxPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return false }
+        var url = URL(fileURLWithPath: #"\\wsl.localhost"#, isDirectory: true)
+            .appendingPathComponent(distributionName, isDirectory: true)
+        for component in components {
+            url.appendPathComponent(component, isDirectory: true)
+        }
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
     private static func isSafePathComponent(_ value: String) -> Bool {
         !value.isEmpty && value != "." && value != ".." && !value.contains("\\")
             && !value.contains("/") && !value.unicodeScalars.contains { $0.value < 32 }

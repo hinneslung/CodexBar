@@ -52,11 +52,35 @@ private final class WindowsRefreshResultStore: @unchecked Sendable {
 private struct WindowsConfigurationTaskResult: Sendable {
     let requestID: Foundation.UUID
     let provider: WindowsProviderID
+    let profileID: WindowsProviderProfileID
     let status: WindowsUpstreamConfigurationStatus?
     let didApply: Bool
     let appliedConfiguration: WindowsProviderConfiguration?
     let safeErrorText: String?
     let canClearCredential: Bool
+    let removedProfileID: WindowsProviderProfileID?
+
+    init(
+        requestID: Foundation.UUID,
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
+        status: WindowsUpstreamConfigurationStatus?,
+        didApply: Bool,
+        appliedConfiguration: WindowsProviderConfiguration?,
+        safeErrorText: String?,
+        canClearCredential: Bool,
+        removedProfileID: WindowsProviderProfileID? = nil)
+    {
+        self.requestID = requestID
+        self.provider = provider
+        self.profileID = profileID
+        self.status = status
+        self.didApply = didApply
+        self.appliedConfiguration = appliedConfiguration
+        self.safeErrorText = safeErrorText
+        self.canClearCredential = canClearCredential
+        self.removedProfileID = removedProfileID
+    }
 }
 
 private final class WindowsConfigurationTaskResultStore: @unchecked Sendable {
@@ -120,8 +144,8 @@ final class WindowsTrayApplication {
     private var taskbarCreatedMessage: UINT = 0
     private var configuration: WindowsAppConfiguration
     private var presentation: WindowsDashboardPresentation
-    private var lastSuccessfulSnapshots: [WindowsProviderID: WindowsProviderSnapshot] = [:]
-    private var lastPublishedSnapshots: [WindowsProviderID: WindowsProviderSnapshot] = [:]
+    private var lastSuccessfulSnapshots: [WindowsProviderProfileID: WindowsProviderSnapshot] = [:]
+    private var lastPublishedSnapshots: [WindowsProviderProfileID: WindowsProviderSnapshot] = [:]
     private var refreshGate = WindowsRefreshGate()
     private var refreshGeneration: UInt64 = 0
     private var refreshTask: Task<Void, Never>?
@@ -147,7 +171,7 @@ final class WindowsTrayApplication {
         self.credentialRouteResolver = credentialRouteResolver
         self.providerConfigurationClient = providerConfigurationClient
         self.configuration = (try? configurationStore?.load()) ?? .defaults
-        self.presentation = .loading(providers: self.configuration.enabledProviderIDs)
+        self.presentation = .loading(profiles: self.configuration.enabledProviders)
         self.popup = WindowsPopupWindow(instance: self.instance)
         self.applicationIcon = WindowsApplicationIcon.load()
         self.showPopupOnStart = showPopupOnStart
@@ -437,7 +461,7 @@ extension WindowsTrayApplication {
         self.presentation = WindowsDashboardPresentation.make(
             snapshots: self.snapshotsForRefreshStart(),
             refreshedAt: self.presentation.refreshedAt ?? Date(),
-            providers: self.configuration.enabledProviderIDs,
+            profiles: self.configuration.enabledProviders,
             isRefreshing: true)
         self.popup.update(self.presentation)
         self.updateTrayTooltip()
@@ -485,17 +509,19 @@ extension WindowsTrayApplication {
                 result = try WindowsConfigurationTaskResult(
                     requestID: requestID,
                     provider: provider,
-                    status: client.status(provider: provider),
+                    profileID: configuration.profileID,
+                    status: client.status(provider: provider, profileID: configuration.profileID),
                     didApply: false,
                     appliedConfiguration: nil,
                     safeErrorText: nil,
-                    canClearCredential: client.contains(provider: provider))
+                    canClearCredential: client.contains(provider: provider, profileID: configuration.profileID))
             } catch {
                 result = Self.configurationFailure(
                     requestID: requestID,
                     provider: provider,
+                    profileID: configuration.profileID,
                     error: error,
-                    canClearCredential: client.contains(provider: provider))
+                    canClearCredential: client.contains(provider: provider, profileID: configuration.profileID))
             }
             store.publish(result)
             _ = PostMessageW(window.value, Self.configurationTaskCompletedMessage, 0, 0)
@@ -525,25 +551,81 @@ extension WindowsTrayApplication {
                     if let credentialSetID {
                         try client.save(
                             provider: provider,
+                            profileID: configuration.profileID,
                             credentialSetID: credentialSetID,
                             values: values)
                     } else {
-                        try client.clear(provider: provider)
+                        try client.clear(provider: provider, profileID: configuration.profileID)
                     }
                 result = WindowsConfigurationTaskResult(
                     requestID: requestID,
                     provider: provider,
+                    profileID: configuration.profileID,
                     status: status,
                     didApply: true,
                     appliedConfiguration: configuration,
                     safeErrorText: nil,
-                    canClearCredential: client.contains(provider: provider))
+                    canClearCredential: client.contains(provider: provider, profileID: configuration.profileID))
             } catch {
                 result = Self.configurationFailure(
                     requestID: requestID,
                     provider: provider,
+                    profileID: configuration.profileID,
                     error: error,
-                    canClearCredential: client.contains(provider: provider))
+                    canClearCredential: client.contains(provider: provider, profileID: configuration.profileID))
+            }
+            store.publish(result)
+            _ = PostMessageW(window.value, Self.configurationTaskCompletedMessage, 0, 0)
+        }
+        return requestID
+    }
+
+    func addProviderProfile(_ provider: WindowsProviderID) -> WindowsProviderConfiguration? {
+        let previous = self.configuration
+        guard let profile = self.configuration.addProfile(for: provider) else { return nil }
+        guard self.saveConfigurationAndRefresh() else {
+            self.configuration = previous
+            self.popup.updateConfiguration(previous)
+            return nil
+        }
+        return profile
+    }
+
+    @discardableResult
+    func requestRemoveProviderProfile(_ profile: WindowsProviderConfiguration) -> Foundation.UUID {
+        let requestID = Foundation.UUID()
+        guard let messageWindow = self.messageWindow,
+              self.configuration.profileCount(for: profile.id) > 1
+        else { return requestID }
+        self.invalidateActiveRefresh()
+        self.credentialMutationRequestIDs.insert(requestID)
+        let client = self.providerConfigurationClient
+        let removalService = WindowsProviderProfileRemovalService(configurationClient: client)
+        let store = self.configurationTaskResultStore
+        let window = WindowsWindowHandleBox(messageWindow)
+        Task.detached(priority: .utility) { @Sendable [client, removalService, store, window] in
+            let result: WindowsConfigurationTaskResult
+            do {
+                try removalService.removeAppOwnedCredential(for: profile)
+                result = WindowsConfigurationTaskResult(
+                    requestID: requestID,
+                    provider: profile.id,
+                    profileID: profile.profileID,
+                    status: nil,
+                    didApply: true,
+                    appliedConfiguration: nil,
+                    safeErrorText: nil,
+                    canClearCredential: false,
+                    removedProfileID: profile.profileID)
+            } catch {
+                result = Self.configurationFailure(
+                    requestID: requestID,
+                    provider: profile.id,
+                    profileID: profile.profileID,
+                    error: error,
+                    canClearCredential: client.contains(
+                        provider: profile.id,
+                        profileID: profile.profileID))
             }
             store.publish(result)
             _ = PostMessageW(window.value, Self.configurationTaskCompletedMessage, 0, 0)
@@ -554,12 +636,14 @@ extension WindowsTrayApplication {
     private static func configurationFailure(
         requestID: Foundation.UUID,
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
         error: Error,
         canClearCredential: Bool) -> WindowsConfigurationTaskResult
     {
         WindowsConfigurationTaskResult(
             requestID: requestID,
             provider: provider,
+            profileID: profileID,
             status: nil,
             didApply: false,
             appliedConfiguration: nil,
@@ -582,6 +666,14 @@ extension WindowsTrayApplication {
         guard let result = self.configurationTaskResultStore.take() else { return }
         let wasCredentialMutation = self.credentialMutationRequestIDs.remove(result.requestID) != nil
         var safeErrorText = result.safeErrorText
+        if let removedProfileID = result.removedProfileID, result.didApply {
+            _ = self.configuration.removeProfile(removedProfileID)
+            self.lastSuccessfulSnapshots.removeValue(forKey: removedProfileID)
+            self.lastPublishedSnapshots.removeValue(forKey: removedProfileID)
+            if !self.saveConfigurationAndRefresh() {
+                safeErrorText = "The credential was removed, but the profile list could not be saved."
+            }
+        }
         if let applied = result.appliedConfiguration, result.didApply {
             if !self.updateProviderConfiguration(applied) {
                 safeErrorText =
@@ -591,6 +683,7 @@ extension WindowsTrayApplication {
         self.popup.completeProviderConfigurationTask(
             requestID: result.requestID,
             provider: result.provider,
+            profileID: result.profileID,
             status: result.status,
             didApply: result.didApply,
             safeErrorText: safeErrorText,
@@ -624,18 +717,21 @@ extension WindowsTrayApplication {
             self.presentation = WindowsDashboardPresentation.make(
                 snapshots: [],
                 refreshedAt: result.refreshedAt,
-                providers: self.configuration.enabledProviderIDs)
+                profiles: self.configuration.enabledProviders)
             self.popup.update(self.presentation)
             self.updateTrayTooltip()
             return
         }
         let publication = WindowsProviderSnapshotPublisher.publish(result.snapshots) { snapshot in
             let retained = self.snapshotRetainingLastSuccess(snapshot)
-            self.lastPublishedSnapshots[snapshot.provider] = retained
+            guard self.configuration.providers.contains(where: { $0.profileID == snapshot.profileID }) else {
+                return
+            }
+            self.lastPublishedSnapshots[snapshot.profileID] = retained
             self.presentation = WindowsDashboardPresentation.make(
                 snapshots: Array(self.lastPublishedSnapshots.values),
                 refreshedAt: result.refreshedAt,
-                providers: self.configuration.enabledProviderIDs)
+                profiles: self.configuration.enabledProviders)
             self.popup.update(self.presentation)
             self.updateTrayTooltip()
         }
@@ -648,12 +744,12 @@ extension WindowsTrayApplication {
         -> WindowsProviderSnapshot
     {
         if snapshot.availability == .available {
-            self.lastSuccessfulSnapshots[snapshot.provider] = snapshot
+            self.lastSuccessfulSnapshots[snapshot.profileID] = snapshot
             return snapshot
         }
         return Self.snapshotRetainingLastSuccess(
             snapshot,
-            cached: self.lastSuccessfulSnapshots[snapshot.provider])
+            cached: self.lastSuccessfulSnapshots[snapshot.profileID])
     }
 
     static func snapshotRetainingLastSuccess(
@@ -666,6 +762,8 @@ extension WindowsTrayApplication {
             .joined(separator: " ")
         return WindowsProviderSnapshot(
             provider: cached.provider,
+            profileID: cached.profileID,
+            profileName: cached.profileName,
             availability: .error,
             usedPercent: cached.usedPercent,
             usageSummaryText: cached.usageSummaryText,
@@ -679,11 +777,11 @@ extension WindowsTrayApplication {
             updatedAt: cached.updatedAt)
     }
 
-    func toggleProvider(_ provider: WindowsProviderID) {
-        guard let current = self.configuration.providers.first(where: { $0.id == provider }) else {
+    func toggleProvider(_ profileID: WindowsProviderProfileID) {
+        guard let current = self.configuration.providers.first(where: { $0.profileID == profileID }) else {
             return
         }
-        self.configuration.setProviderEnabled(provider, enabled: !current.enabled)
+        self.configuration.setProviderEnabled(profileID, enabled: !current.enabled)
         self.saveConfigurationAndRefresh()
     }
 
@@ -763,7 +861,7 @@ extension WindowsTrayApplication {
         }
     }
 
-    func moveProviderToTop(_ provider: WindowsProviderID) {
+    func moveProviderToTop(_ profileID: WindowsProviderProfileID) {
         let ordered = self.configuration.providers.indices.sorted {
             let lhs = self.configuration.providers[$0]
             let rhs = self.configuration.providers[$1]
@@ -772,7 +870,7 @@ extension WindowsTrayApplication {
         let enabled = ordered.filter { self.configuration.providers[$0].enabled }
         guard
             let sourcePosition = enabled.firstIndex(where: {
-                self.configuration.providers[$0].id == provider
+                self.configuration.providers[$0].profileID == profileID
             }),
             sourcePosition > 0
         else {
@@ -788,7 +886,7 @@ extension WindowsTrayApplication {
         self.saveConfigurationAndRefresh()
     }
 
-    func moveProvider(_ provider: WindowsProviderID, direction: Int) {
+    func moveProvider(_ profileID: WindowsProviderProfileID, direction: Int) {
         let ordered = self.configuration.providers.indices.sorted {
             let lhs = self.configuration.providers[$0]
             let rhs = self.configuration.providers[$1]
@@ -796,7 +894,7 @@ extension WindowsTrayApplication {
         }
         let enabled = ordered.filter { self.configuration.providers[$0].enabled }
         guard
-            let position = enabled.firstIndex(where: { self.configuration.providers[$0].id == provider })
+            let position = enabled.firstIndex(where: { self.configuration.providers[$0].profileID == profileID })
         else {
             return
         }
@@ -812,33 +910,64 @@ extension WindowsTrayApplication {
 
     @discardableResult
     func updateProviderConfiguration(_ provider: WindowsProviderConfiguration) -> Bool {
-        guard let index = self.configuration.providers.firstIndex(where: { $0.id == provider.id })
+        guard let index = self.configuration.providers.firstIndex(where: { $0.profileID == provider.profileID })
         else {
             return false
         }
+        let previous = self.configuration.providers[index]
+        let previousSuccessful = self.lastSuccessfulSnapshots[provider.profileID]
+        let previousPublished = self.lastPublishedSnapshots[provider.profileID]
         self.configuration.providers[index] = provider
-        return self.saveConfigurationAndRefresh()
+        if Self.routingChanged(from: previous, to: provider) {
+            self.lastSuccessfulSnapshots.removeValue(forKey: provider.profileID)
+            self.lastPublishedSnapshots.removeValue(forKey: provider.profileID)
+        }
+        guard self.saveConfigurationAndRefresh() else {
+            self.configuration.providers[index] = previous
+            self.lastSuccessfulSnapshots[provider.profileID] = previousSuccessful
+            self.lastPublishedSnapshots[provider.profileID] = previousPublished
+            self.popup.updateConfiguration(self.configuration)
+            return false
+        }
+        return true
+    }
+
+    static func routingChanged(
+        from previous: WindowsProviderConfiguration,
+        to current: WindowsProviderConfiguration) -> Bool
+    {
+        previous.id != current.id
+            || previous.sourceMode != current.sourceMode
+            || previous.wslDistro != current.wslDistro
+            || previous.companionValues != current.companionValues
+            || previous.codexHome != current.codexHome
     }
 
     @discardableResult
     private func saveConfigurationAndRefresh() -> Bool {
         guard self.saveConfiguration() else { return false }
+        self.invalidateActiveRefresh()
         self.presentation = WindowsDashboardPresentation.make(
             snapshots: self.snapshotsForRefreshPresentation(),
             refreshedAt: self.presentation.refreshedAt ?? Date(),
-            providers: self.configuration.enabledProviderIDs,
+            profiles: self.configuration.enabledProviders,
             isRefreshing: true)
         self.popup.update(self.presentation)
         self.requestRefresh()
         return true
     }
 
+    private func invalidateActiveRefresh() {
+        self.refreshTask?.cancel()
+        self.refreshGeneration &+= 1
+    }
+
     private func snapshotsForRefreshPresentation() -> [WindowsProviderSnapshot] {
         self.lastSuccessfulSnapshots.values.map { snapshot in
             guard
-                let provider = self.configuration.providers.first(where: { $0.id == snapshot.provider })
+                let provider = self.configuration.providers.first(where: { $0.profileID == snapshot.profileID })
             else { return snapshot }
-            let route = self.credentialRouteResolver.resolve(snapshot.provider)
+            let route = self.credentialRouteResolver.resolve(provider)
             let manualLabel =
                 route.manualSelected
                     ? route.manualLabel ?? "Manual credential"
@@ -851,18 +980,17 @@ extension WindowsTrayApplication {
     }
 
     private func snapshotsForRefreshStart() -> [WindowsProviderSnapshot] {
-        self.configuration.enabledProviderIDs.compactMap { providerID in
-            guard let provider = self.configuration.providers.first(where: { $0.id == providerID }) else {
-                return nil
-            }
+        self.configuration.enabledProviders.compactMap { provider in
             let snapshot =
-                self.lastPublishedSnapshots[providerID]
-                    ?? self.lastSuccessfulSnapshots[providerID]
+                self.lastPublishedSnapshots[provider.profileID]
+                    ?? self.lastSuccessfulSnapshots[provider.profileID]
                     ?? WindowsProviderSnapshot(
-                        provider: providerID,
+                        provider: provider.id,
+                        profileID: provider.profileID,
+                        profileName: provider.profileName,
                         availability: .loading,
                         source: WindowsProviderSourcePresentation.configuredFallback(configuration: provider))
-            let route = self.credentialRouteResolver.resolve(providerID)
+            let route = self.credentialRouteResolver.resolve(provider)
             let manualLabel =
                 route.manualSelected
                     ? route.manualLabel ?? "Manual credential"
