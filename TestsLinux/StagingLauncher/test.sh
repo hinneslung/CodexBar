@@ -23,11 +23,9 @@ diagnose_output="$(printf '%s' '{"canary":"stdin-only"}' | "$work/CodexBarStagin
 [[ "$diagnose_output" == "fixture-diagnose-ok" ]]
 ! find /tmp -maxdepth 1 -name '.codexbar-config-*' -print -quit | grep -q .
 
-if printf '{}' | "$work/CodexBarStagingLauncher" \
-  --timeout-seconds 5 --provider fixture --source auto --mode usage 2>/dev/null; then
-  echo "launcher accepted disallowed source auto" >&2
-  exit 1
-fi
+auto_output="$(printf '%s' '{"canary":"stdin-only"}' | "$work/CodexBarStagingLauncher" \
+  --timeout-seconds 5 --provider fixture --source auto --mode usage)"
+[[ "$auto_output" == "fixture-auto-ok" ]]
 if printf '{}' | "$work/CodexBarStagingLauncher" \
   --timeout-seconds 5 --provider '../fixture' --source web --mode usage 2>/dev/null; then
   echo "launcher accepted malformed provider" >&2

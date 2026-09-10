@@ -67,21 +67,33 @@ struct WindowsProviderConfigurationClient: Sendable {
     }
 
     func contains(provider: WindowsProviderID) -> Bool {
-        self.vault?.contains(provider) == true
+        self.contains(provider: provider, profileID: .defaultID(for: provider))
+    }
+
+    func contains(provider: WindowsProviderID, profileID: WindowsProviderProfileID) -> Bool {
+        self.vault?.contains(provider: provider, profileID: profileID) == true
     }
 
     func status(provider: WindowsProviderID) throws -> WindowsUpstreamConfigurationStatus {
+        try self.status(provider: provider, profileID: .defaultID(for: provider))
+    }
+
+    func status(
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID) throws -> WindowsUpstreamConfigurationStatus
+    {
         guard let vault = self.vault else {
             throw WindowsProviderConfigurationError.storageUnavailable
         }
         return try WindowsUpstreamConfigurationStatus.make(
             provider: provider,
-            record: vault.load(provider))
+            record: vault.load(provider, profileID: profileID))
     }
 
     @discardableResult
     func save(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
         credentialSetID: String,
         values: [String: String]) throws -> WindowsUpstreamConfigurationStatus
     {
@@ -90,16 +102,39 @@ struct WindowsProviderConfigurationClient: Sendable {
         }
         let record = try vault.save(
             provider: provider,
+            profileID: profileID,
             credentialSetID: credentialSetID,
             submittedValues: values)
         return try WindowsUpstreamConfigurationStatus.make(provider: provider, record: record)
     }
 
     func clear(provider: WindowsProviderID) throws -> WindowsUpstreamConfigurationStatus {
+        try self.clear(provider: provider, profileID: .defaultID(for: provider))
+    }
+
+    func clear(
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID) throws -> WindowsUpstreamConfigurationStatus
+    {
         guard let vault = self.vault else {
             throw WindowsProviderConfigurationError.storageUnavailable
         }
-        try vault.clear(provider)
+        try vault.clear(provider, profileID: profileID)
         return try WindowsUpstreamConfigurationStatus.make(provider: provider, record: nil)
+    }
+}
+
+struct WindowsProviderProfileRemovalService: Sendable {
+    let configurationClient: WindowsProviderConfigurationClient
+
+    init(configurationClient: WindowsProviderConfigurationClient = .init()) {
+        self.configurationClient = configurationClient
+    }
+
+    func removeAppOwnedCredential(for profile: WindowsProviderConfiguration) throws {
+        guard WindowsProviderConfigurationCatalog.byProvider[profile.id] != nil else { return }
+        _ = try self.configurationClient.clear(
+            provider: profile.id,
+            profileID: profile.profileID)
     }
 }

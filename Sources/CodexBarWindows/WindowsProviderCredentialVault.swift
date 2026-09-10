@@ -46,21 +46,43 @@ struct WindowsProviderCredentialRecord: Codable, Equatable, Sendable,
 
     let schemaVersion: Int
     let providerID: String
+    let profileID: String
     let credentialSetID: String
     let revision: String
     let values: [String: String]
 
     init(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
         credentialSetID: String,
         revision: Foundation.UUID = Foundation.UUID(),
         values: [String: String])
     {
         self.schemaVersion = Self.currentSchemaVersion
         self.providerID = provider.rawValue
+        self.profileID = (profileID ?? .defaultID(for: provider)).rawValue
         self.credentialSetID = credentialSetID
         self.revision = revision.uuidString.lowercased()
         self.values = values
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case providerID
+        case profileID
+        case credentialSetID
+        case revision
+        case values
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        self.providerID = try container.decode(String.self, forKey: .providerID)
+        self.profileID = try container.decodeIfPresent(String.self, forKey: .profileID) ?? self.providerID
+        self.credentialSetID = try container.decode(String.self, forKey: .credentialSetID)
+        self.revision = try container.decode(String.self, forKey: .revision)
+        self.values = try container.decode([String: String].self, forKey: .values)
     }
 
     var description: String {
@@ -95,8 +117,16 @@ struct WindowsProviderCredentialVault: Sendable {
     }
 
     func contains(_ provider: WindowsProviderID, fileManager: FileManager = .default) -> Bool {
+        self.contains(provider: provider, profileID: .defaultID(for: provider), fileManager: fileManager)
+    }
+
+    func contains(
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
+        fileManager: FileManager = .default) -> Bool
+    {
         guard Self.isSupportedProvider(provider) else { return false }
-        return fileManager.fileExists(atPath: self.fileURL(for: provider).path)
+        return fileManager.fileExists(atPath: self.fileURL(for: profileID).path)
     }
 
     func protectedBlobIdentity(_ provider: WindowsProviderID) throws
@@ -104,6 +134,15 @@ struct WindowsProviderCredentialVault: Sendable {
     {
         try WindowsProviderOperationLock.withLock(provider: provider) {
             try self.protectedBlobIdentityUnlocked(provider)
+        }
+    }
+
+    func protectedBlobIdentity(
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID) throws -> WindowsProviderProtectedBlobIdentity?
+    {
+        try WindowsProviderOperationLock.withLock(profileID: profileID) {
+            try self.protectedBlobIdentityUnlocked(provider, profileID: profileID)
         }
     }
 
@@ -115,21 +154,33 @@ struct WindowsProviderCredentialVault: Sendable {
         }
     }
 
+    func load(
+        _ provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
+        fileManager: FileManager = .default) throws -> WindowsProviderCredentialRecord?
+    {
+        try WindowsProviderOperationLock.withLock(profileID: profileID) {
+            try self.loadUnlocked(provider, profileID: profileID, fileManager: fileManager)
+        }
+    }
+
     @discardableResult
     func save(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
         credentialSetID: String,
         submittedValues: [String: String],
         fileManager: FileManager = .default) throws -> WindowsProviderCredentialRecord
     {
-        try WindowsProviderOperationLock.withLock(provider: provider) {
+        let profileID = profileID ?? .defaultID(for: provider)
+        return try WindowsProviderOperationLock.withLock(profileID: profileID) {
             guard
                 let set = WindowsProviderConfigurationCatalog.credentialSet(
                     provider: provider,
                     id: credentialSetID)
             else { throw WindowsProviderCredentialVaultError.invalidCredentialSet }
 
-            let existing = try self.loadUnlocked(provider, fileManager: fileManager)
+            let existing = try self.loadUnlocked(provider, profileID: profileID, fileManager: fileManager)
             var values: [String: String] = [:]
             for field in set.fields {
                 let submitted = submittedValues[field.id]
@@ -159,9 +210,10 @@ struct WindowsProviderCredentialVault: Sendable {
 
             let record = WindowsProviderCredentialRecord(
                 provider: provider,
+                profileID: profileID,
                 credentialSetID: credentialSetID,
                 values: values)
-            try Self.validate(record, provider: provider)
+            try Self.validate(record, provider: provider, profileID: profileID)
             let plaintext = try JSONEncoder().encode(record)
             guard plaintext.count <= Self.maximumPlaintextBytes else {
                 throw WindowsProviderCredentialVaultError.credentialTooLarge
@@ -170,17 +222,25 @@ struct WindowsProviderCredentialVault: Sendable {
             guard ciphertext.count <= Self.maximumCiphertextBytes else {
                 throw WindowsProviderCredentialVaultError.credentialTooLarge
             }
-            try self.writeAtomically(ciphertext, provider: provider, fileManager: fileManager)
+            try self.writeAtomically(ciphertext, profileID: profileID, fileManager: fileManager)
             return record
         }
     }
 
     func clear(_ provider: WindowsProviderID, fileManager: FileManager = .default) throws {
-        try WindowsProviderOperationLock.withLock(provider: provider) {
+        try self.clear(provider, profileID: .defaultID(for: provider), fileManager: fileManager)
+    }
+
+    func clear(
+        _ provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
+        fileManager: FileManager = .default) throws
+    {
+        try WindowsProviderOperationLock.withLock(profileID: profileID) {
             guard Self.isSupportedProvider(provider) else {
                 throw WindowsProviderCredentialVaultError.unsupportedProvider
             }
-            let url = self.fileURL(for: provider)
+            let url = self.fileURL(for: profileID)
             guard fileManager.fileExists(atPath: url.path) else { return }
             let deleted = WindowsWideString.withPointer(url.path) { DeleteFileW($0) }
             guard deleted || GetLastError() == DWORD(ERROR_FILE_NOT_FOUND) else {
@@ -191,12 +251,14 @@ struct WindowsProviderCredentialVault: Sendable {
 
     private func loadUnlocked(
         _ provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
         fileManager: FileManager) throws -> WindowsProviderCredentialRecord?
     {
         guard Self.isSupportedProvider(provider) else {
             throw WindowsProviderCredentialVaultError.unsupportedProvider
         }
-        let url = self.fileURL(for: provider)
+        let profileID = profileID ?? .defaultID(for: provider)
+        let url = self.fileURL(for: profileID)
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         guard
             let metadata = try? url.resourceValues(
@@ -221,17 +283,24 @@ struct WindowsProviderCredentialVault: Sendable {
         } catch {
             throw WindowsProviderCredentialVaultError.corruptedCredential
         }
-        try Self.validate(record, provider: provider)
+        try Self.validate(record, provider: provider, profileID: profileID)
         return record
     }
 
     private func protectedBlobIdentityUnlocked(_ provider: WindowsProviderID) throws
         -> WindowsProviderProtectedBlobIdentity?
     {
-        guard Self.isSupportedProvider(provider) else {
+        try self.protectedBlobIdentityUnlocked(provider, profileID: .defaultID(for: provider))
+    }
+
+    private func protectedBlobIdentityUnlocked(
+        _ provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID) throws -> WindowsProviderProtectedBlobIdentity?
+    {
+        guard Self.isSupportedProvider(provider), WindowsProviderProfileID.isValid(profileID.rawValue) else {
             throw WindowsProviderCredentialVaultError.unsupportedProvider
         }
-        let handle = WindowsWideString.withPointer(self.fileURL(for: provider).path) { path in
+        let handle = WindowsWideString.withPointer(self.fileURL(for: profileID).path) { path in
             CreateFileW(
                 path,
                 0,
@@ -265,13 +334,13 @@ struct WindowsProviderCredentialVault: Sendable {
 
     private func writeAtomically(
         _ data: Data,
-        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
         fileManager: FileManager) throws
     {
         try Self.createProtectedDirectory(self.directoryURL, fileManager: fileManager)
-        let destination = self.fileURL(for: provider)
+        let destination = self.fileURL(for: profileID)
         let temporary = self.directoryURL.appendingPathComponent(
-            ".\(provider.rawValue).\(UUID().uuidString).tmp",
+            ".\(profileID.rawValue).\(UUID().uuidString).tmp",
             isDirectory: false)
         defer { try? fileManager.removeItem(at: temporary) }
 
@@ -322,16 +391,19 @@ struct WindowsProviderCredentialVault: Sendable {
         guard replaced else { throw WindowsProviderCredentialVaultError.storageFailed }
     }
 
-    private func fileURL(for provider: WindowsProviderID) -> URL {
-        self.directoryURL.appendingPathComponent("\(provider.rawValue).bin", isDirectory: false)
+    private func fileURL(for profileID: WindowsProviderProfileID) -> URL {
+        self.directoryURL.appendingPathComponent("\(profileID.rawValue).bin", isDirectory: false)
     }
 
     private static func validate(
         _ record: WindowsProviderCredentialRecord,
-        provider: WindowsProviderID) throws
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil) throws
     {
+        let profileID = profileID ?? .defaultID(for: provider)
         guard record.schemaVersion == WindowsProviderCredentialRecord.currentSchemaVersion,
               record.providerID == provider.rawValue,
+              record.profileID == profileID.rawValue,
               Foundation.UUID(uuidString: record.revision) != nil,
               let set = WindowsProviderConfigurationCatalog.credentialSet(
                   provider: provider,

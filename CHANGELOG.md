@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.56.8-windows.2 — 2026-09-10
+
+- Track multiple accounts for the same provider with separate profiles, credentials and usage readings.
+- Set a Codex profile's home directory to use another existing sign-in, such as `~/.codex-personal`.
+- Add or remove profiles with header icons. Profile names are optional; named entries use `Provider - Profile`.
+- Keep existing settings and saved credentials when upgrading. Removing a profile does not remove its provider's sign-in files.
+- Keep profile refreshes independent and prevent an older request from updating the wrong profile.
+
 ## Unreleased
 
 ### Windows

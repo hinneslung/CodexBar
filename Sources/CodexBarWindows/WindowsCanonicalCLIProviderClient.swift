@@ -153,7 +153,8 @@ struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertib
         config: Data,
         credentialPath: String,
         executionMode: ExecutionMode = .usage,
-        windowsDirectory: String = ProcessInfo.processInfo.environment["WINDIR"] ?? "C:\\Windows") -> Self
+        windowsDirectory: String = ProcessInfo.processInfo.environment["WINDIR"] ?? "C:\\Windows",
+        presentsAsAutomatic: Bool = false) -> Self
     {
         let launcherTimeout =
             executionMode == .diagnose
@@ -168,7 +169,9 @@ struct WindowsCanonicalCLIInvocation: Equatable, Sendable, CustomStringConvertib
             ],
             source: .init(
                 distributionLabel: distribution,
-                kind: credentialPath == "OpenCode bridge" ? .openCode : .manual(credentialPath),
+                kind: presentsAsAutomatic
+                    ? .automatic
+                    : (credentialPath == "OpenCode bridge" ? .openCode : .manual(credentialPath)),
                 isResolved: false),
             distribution: distribution,
             standardInput: config,
@@ -218,14 +221,17 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
 
     func fetch(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
         invocation: WindowsCanonicalCLIInvocation,
         environmentOverrides: [String: String] = [:],
         authorityCheck: (@Sendable () throws -> Bool)? = nil) async
         -> WindowsProviderSnapshot
     {
+        let profileID = profileID ?? .defaultID(for: provider)
         do {
             return try await self.load(
                 provider: provider,
+                profileID: profileID,
                 invocation: invocation,
                 environmentOverrides: environmentOverrides,
                 authorityCheck: authorityCheck)
@@ -416,6 +422,7 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
 
     private func load(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
         invocation: WindowsCanonicalCLIInvocation,
         environmentOverrides: [String: String],
         authorityCheck: (@Sendable () throws -> Bool)?) async throws -> WindowsProviderSnapshot
@@ -426,6 +433,7 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
             do {
                 attempt = try await self.performAttempt(
                     provider: provider,
+                    profileID: profileID,
                     invocation: invocation,
                     environmentOverrides: environmentOverrides,
                     authorityCheck: authorityCheck)
@@ -448,12 +456,13 @@ struct WindowsCanonicalCLIProviderClient: Sendable {
 
     private func performAttempt(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID,
         invocation: WindowsCanonicalCLIInvocation,
         environmentOverrides: [String: String],
         authorityCheck: (@Sendable () throws -> Bool)?) async throws -> ProviderAttempt
     {
         let operation = Task.detached(priority: .utility) {
-            try WindowsProviderOperationLock.withLock(provider: provider) {
+            try WindowsProviderOperationLock.withLock(profileID: profileID) {
                 guard try authorityCheck?() ?? true else {
                     throw WindowsCanonicalCLIError.staleCredential
                 }

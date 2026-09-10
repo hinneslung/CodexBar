@@ -24,6 +24,8 @@ struct WindowsProviderWindowSnapshot: Equatable, Sendable {
 /// Display-safe provider data. Adapters must never place credentials, cookies, or raw response bodies in these fields.
 struct WindowsProviderSnapshot: Sendable {
     let provider: WindowsProviderID
+    let profileID: WindowsProviderProfileID
+    let profileName: String
     let availability: WindowsProviderAvailability
     let usedPercent: Double?
     let usageSummaryText: String?
@@ -41,8 +43,30 @@ struct WindowsProviderSnapshot: Sendable {
     /// The publisher invokes this only while holding this provider's operation mutex.
     let publicationAuthorityCheck: (@Sendable () throws -> Bool)?
 
+    func assigningProfile(_ profile: WindowsProviderConfiguration) -> Self {
+        Self(
+            provider: self.provider,
+            profileID: profile.profileID,
+            profileName: profile.profileName,
+            availability: self.availability,
+            usedPercent: self.usedPercent,
+            usageSummaryText: self.usageSummaryText,
+            resetText: self.resetText,
+            source: self.source,
+            safeErrorText: self.safeErrorText,
+            windows: self.windows,
+            planText: self.planText,
+            balanceText: self.balanceText,
+            accountText: self.accountText,
+            updatedAt: self.updatedAt,
+            discardsRefreshResult: self.discardsRefreshResult,
+            publicationAuthorityCheck: self.publicationAuthorityCheck)
+    }
+
     init(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
+        profileName: String = WindowsProviderProfileValidation.defaultName,
         availability: WindowsProviderAvailability,
         usedPercent: Double? = nil,
         usageSummaryText: String? = nil,
@@ -58,6 +82,8 @@ struct WindowsProviderSnapshot: Sendable {
         publicationAuthorityCheck: (@Sendable () throws -> Bool)? = nil)
     {
         self.provider = provider
+        self.profileID = profileID ?? .defaultID(for: provider)
+        self.profileName = profileName
         self.availability = availability
         self.usedPercent = usedPercent
         self.usageSummaryText = usageSummaryText
@@ -76,6 +102,8 @@ struct WindowsProviderSnapshot: Sendable {
     func replacingSource(_ source: WindowsProviderSourcePresentation) -> Self {
         Self(
             provider: self.provider,
+            profileID: self.profileID,
+            profileName: self.profileName,
             availability: self.availability,
             usedPercent: self.usedPercent,
             usageSummaryText: self.usageSummaryText,
@@ -93,6 +121,8 @@ struct WindowsProviderSnapshot: Sendable {
 
     init(
         provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
+        profileName: String = WindowsProviderProfileValidation.defaultName,
         availability: WindowsProviderAvailability,
         usedPercent: Double? = nil,
         usageSummaryText: String? = nil,
@@ -109,6 +139,8 @@ struct WindowsProviderSnapshot: Sendable {
     {
         self.init(
             provider: provider,
+            profileID: profileID,
+            profileName: profileName,
             availability: availability,
             usedPercent: usedPercent,
             usageSummaryText: usageSummaryText,
@@ -133,6 +165,8 @@ struct WindowsProviderSnapshot: Sendable {
     {
         Self(
             provider: self.provider,
+            profileID: self.profileID,
+            profileName: self.profileName,
             availability: self.availability,
             usedPercent: self.usedPercent,
             usageSummaryText: self.usageSummaryText,
@@ -192,6 +226,9 @@ struct WindowsUsageWindowPresentation: Equatable, Sendable {
 
 struct WindowsProviderRowPresentation: Equatable, Sendable {
     let provider: WindowsProviderID
+    let profileID: WindowsProviderProfileID
+    let profileName: String
+    let distinguishesProfile: Bool
     let statusText: String
     let percentText: String
     let resetText: String
@@ -203,6 +240,45 @@ struct WindowsProviderRowPresentation: Equatable, Sendable {
     let accountText: String
     let measuredText: String
 
+    init(
+        provider: WindowsProviderID,
+        profileID: WindowsProviderProfileID? = nil,
+        profileName: String = WindowsProviderProfileValidation.defaultName,
+        distinguishesProfile: Bool = false,
+        statusText: String,
+        percentText: String,
+        resetText: String,
+        sourceText: String,
+        errorText: String,
+        windows: [WindowsUsageWindowPresentation],
+        planText: String,
+        balanceText: String,
+        accountText: String,
+        measuredText: String)
+    {
+        self.provider = provider
+        self.profileID = profileID ?? .defaultID(for: provider)
+        self.profileName = profileName
+        self.distinguishesProfile = distinguishesProfile
+        self.statusText = statusText
+        self.percentText = percentText
+        self.resetText = resetText
+        self.sourceText = sourceText
+        self.errorText = errorText
+        self.windows = windows
+        self.planText = planText
+        self.balanceText = balanceText
+        self.accountText = accountText
+        self.measuredText = measuredText
+    }
+
+    var displayName: String {
+        WindowsProviderProfilePresentation.displayName(
+            provider: self.provider,
+            profileName: self.profileName,
+            distinguishesProfile: self.distinguishesProfile)
+    }
+
     var governingWindow: WindowsUsageWindowPresentation? {
         self.windows.max(by: { $0.usedPercent < $1.usedPercent })
     }
@@ -211,12 +287,12 @@ struct WindowsProviderRowPresentation: Equatable, Sendable {
         let details = [self.percentText, self.resetText, "Source: \(self.sourceText)", self.errorText]
             .filter { !$0.isEmpty }
             .joined(separator: "  •  ")
-        return "\(self.provider.displayName) — \(self.statusText)\r\n\(details)"
+        return "\(self.displayName) — \(self.statusText)\r\n\(details)"
     }
 
     var accessibilityText: String {
         [
-            self.provider.displayName,
+            self.displayName,
             self.statusText,
             self.percentText,
             self.resetText,
@@ -245,6 +321,17 @@ struct WindowsProviderRowPresentation: Equatable, Sendable {
             .joined(separator: "  •  ")
         if !context.isEmpty { return context }
         return self.statusText == "Available" ? "" : self.statusText
+    }
+}
+
+enum WindowsProviderProfilePresentation {
+    static func displayName(
+        provider: WindowsProviderID,
+        profileName: String,
+        distinguishesProfile: Bool) -> String
+    {
+        guard distinguishesProfile, !profileName.isEmpty else { return provider.displayName }
+        return "\(provider.displayName) - \(profileName)"
     }
 }
 
@@ -405,6 +492,9 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
             rows: providers.map { provider in
                 WindowsProviderRowPresentation(
                     provider: provider,
+                    profileID: .defaultID(for: provider),
+                    profileName: WindowsProviderProfileValidation.defaultName,
+                    distinguishesProfile: false,
                     statusText: "Loading",
                     percentText: "Usage unavailable",
                     resetText: "Reset unavailable",
@@ -426,10 +516,35 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
         providers: [WindowsProviderID] = WindowsProviderID.initiallyEnabledProviders,
         isRefreshing: Bool = false) -> Self
     {
-        let snapshotsByProvider = Dictionary(
-            snapshots.map { ($0.provider, $0) }, uniquingKeysWith: { _, rhs in rhs })
-        let rows = providers.map { provider in
-            Self.makeRow(snapshot: snapshotsByProvider[provider], provider: provider)
+        let profiles = providers.map {
+            WindowsProviderConfiguration(id: $0, enabled: true, order: 0)
+        }
+        return self.make(
+            snapshots: snapshots,
+            refreshedAt: refreshedAt,
+            profiles: profiles,
+            isRefreshing: isRefreshing)
+    }
+
+    static func loading(profiles: [WindowsProviderConfiguration]) -> Self {
+        self.make(snapshots: [], refreshedAt: Date(), profiles: profiles, isRefreshing: true)
+    }
+
+    static func make(
+        snapshots: [WindowsProviderSnapshot],
+        refreshedAt: Date,
+        profiles: [WindowsProviderConfiguration],
+        isRefreshing: Bool = false) -> Self
+    {
+        let snapshotsByProfile = Dictionary(
+            snapshots.map { ($0.profileID, $0) }, uniquingKeysWith: { _, rhs in rhs })
+        let providerCounts = Dictionary(grouping: profiles, by: \.id).mapValues(\.count)
+        let rows = profiles.map { profile in
+            self.makeRow(
+                snapshot: snapshotsByProfile[profile.profileID],
+                profile: profile,
+                distinguishesProfile: (providerCounts[profile.id] ?? 0) > 1
+                    || profile.profileName != WindowsProviderProfileValidation.defaultName)
         }
         return Self(rows: rows, refreshedAt: refreshedAt, isRefreshing: isRefreshing)
     }
@@ -448,12 +563,12 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
         if let governing = row.governingWindow {
             let percent = String(format: "%.0f%%", governing.displayedPercent(showUsed: showUsed))
             let detail = Self.compactReset(for: governing, now: now).map { " \($0)" } ?? ""
-            return "\(row.provider.displayName) - \(percent)\(detail)"
+            return "\(row.displayName) - \(percent)\(detail)"
         }
         if let balance = WindowsProviderBalanceFormatter.compact(row.balanceText), !balance.isEmpty {
-            return "\(row.provider.displayName) - \(balance)"
+            return "\(row.displayName) - \(balance)"
         }
-        return "\(row.provider.displayName) - \(row.statusText.lowercased())"
+        return "\(row.displayName) - \(row.statusText.lowercased())"
     }
 
     private static func boundedTrayTooltip(_ lines: [String]) -> String {
@@ -493,11 +608,15 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
 
     private static func makeRow(
         snapshot: WindowsProviderSnapshot?,
-        provider: WindowsProviderID) -> WindowsProviderRowPresentation
+        profile: WindowsProviderConfiguration,
+        distinguishesProfile: Bool) -> WindowsProviderRowPresentation
     {
         guard let snapshot else {
             return WindowsProviderRowPresentation(
-                provider: provider,
+                provider: profile.id,
+                profileID: profile.profileID,
+                profileName: profile.profileName,
+                distinguishesProfile: distinguishesProfile,
                 statusText: "Unavailable",
                 percentText: "Usage unavailable",
                 resetText: "Reset unavailable",
@@ -556,7 +675,10 @@ struct WindowsDashboardPresentation: Equatable, Sendable {
             snapshot.resetText ?? windows.first?.resetText,
             fallback: "Reset unavailable")
         return WindowsProviderRowPresentation(
-            provider: provider,
+            provider: profile.id,
+            profileID: profile.profileID,
+            profileName: profile.profileName,
+            distinguishesProfile: distinguishesProfile,
             statusText: statusText,
             percentText: percentText,
             resetText: resetText,

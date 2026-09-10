@@ -2,9 +2,10 @@ import Foundation
 
 struct WindowsProviderSnapshotPublicationOutcome: Equatable, Sendable {
     let rejectedProviders: Set<WindowsProviderID>
+    let rejectedProfiles: Set<WindowsProviderProfileID>
 
     var requiresRefresh: Bool {
-        !self.rejectedProviders.isEmpty
+        !self.rejectedProfiles.isEmpty
     }
 }
 
@@ -15,10 +16,11 @@ enum WindowsProviderSnapshotPublisher {
         commit: (WindowsProviderSnapshot) -> Void) -> WindowsProviderSnapshotPublicationOutcome
     {
         var rejectedProviders = Set<WindowsProviderID>()
+        var rejectedProfiles = Set<WindowsProviderProfileID>()
         for snapshot in snapshots {
             do {
                 let didCommit = try WindowsProviderOperationLock.withLock(
-                    provider: snapshot.provider,
+                    profileID: snapshot.profileID,
                     timeoutMilliseconds: 0)
                 {
                     guard try snapshot.publicationAuthorityCheck?() ?? true else { return false }
@@ -27,11 +29,15 @@ enum WindowsProviderSnapshotPublisher {
                 }
                 if !didCommit {
                     rejectedProviders.insert(snapshot.provider)
+                    rejectedProfiles.insert(snapshot.profileID)
                 }
             } catch {
                 rejectedProviders.insert(snapshot.provider)
+                rejectedProfiles.insert(snapshot.profileID)
             }
         }
-        return WindowsProviderSnapshotPublicationOutcome(rejectedProviders: rejectedProviders)
+        return WindowsProviderSnapshotPublicationOutcome(
+            rejectedProviders: rejectedProviders,
+            rejectedProfiles: rejectedProfiles)
     }
 }

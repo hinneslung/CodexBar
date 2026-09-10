@@ -59,7 +59,7 @@
 ### Credential handling
 
 - Check saved credentials before looking up OpenCode. If a saved value cannot be read or is invalid, return an error instead of trying a different account.
-- Windows DPAPI encrypts saved credentials for the current user. File permissions allow only that user and SYSTEM. A per-provider lock and revision checks prevent Save/Clear from racing with refresh.
+- Windows DPAPI encrypts saved credentials for the current user. File permissions allow only that user and SYSTEM. A lock and revision checks for each profile prevent Save/Clear from racing with that profile's refresh.
 - To use a saved credential, send only the settings needed for that request through an anonymous stdin pipe. The Linux launcher stores them in memory with `memfd_create`. Its fallback creates a restricted temporary file and removes its directory entry before writing credentials. `CODEXBAR_CONFIG` points to the open file descriptor, not a persistent settings file.
 - DeepSeek receives its key through the CLI's existing token-account configuration, with a new UUID and an empty account label. It needs no special CLI command or secret environment variable from Windows.
 - OpenCode works differently: the app reads the selected Linux user's auth file, then uses `WSLENV` to pass the matching credentials as child-process environment variables. The temporary settings file contains no OpenCode secret.

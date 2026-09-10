@@ -152,7 +152,10 @@ enum WindowsProviderSettingsSearch {
         in configuration: WindowsAppConfiguration,
         query: String) -> [WindowsProviderConfiguration]
     {
-        configuration.disabledProviders.filter { self.matches(provider: $0.id, query: query) }
+        configuration.disabledProviders.filter {
+            self.matches(provider: $0.id, query: query)
+                || self.normalized($0.profileName).contains(self.normalized(query))
+        }
     }
 
     static func matches(provider: WindowsProviderID, query: String) -> Bool {
@@ -172,7 +175,10 @@ enum WindowsProviderSettingsSearch {
         let leftName = self.normalized(lhs.id.displayName)
         let rightName = self.normalized(rhs.id.displayName)
         if leftName != rightName { return leftName < rightName }
-        return lhs.id.rawValue < rhs.id.rawValue
+        let leftProfile = self.normalized(lhs.profileName)
+        let rightProfile = self.normalized(rhs.profileName)
+        if leftProfile != rightProfile { return leftProfile < rightProfile }
+        return lhs.profileID.rawValue < rhs.profileID.rawValue
     }
 
     private static func normalized(_ value: String) -> String {

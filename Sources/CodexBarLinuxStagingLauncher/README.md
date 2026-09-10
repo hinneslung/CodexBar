@@ -6,16 +6,22 @@ This Windows-port-owned helper stages one minimal upstream config and invokes th
 The invocation contract is:
 
 ```text
-CodexBarStagingLauncher --timeout-seconds N --provider ID --source web|api|oauth|cli
+CodexBarStagingLauncher --timeout-seconds N --provider ID --source auto|web|api|oauth|cli --mode usage|diagnose
 ```
 
 `N` is 1 through 3600. `ID` is a canonical lowercase provider ID containing only ASCII letters, digits, and
-hyphens. Arguments may contain exactly those three flag/value pairs, once each. The complete config is read from
-stdin up to EOF, with a 1 MiB limit. The launcher constructs this fixed child invocation:
+hyphens. Arguments must contain exactly those four flag/value pairs, once each. The complete config is read from
+stdin up to EOF, with a 1 MiB limit. The launcher constructs one of these fixed child invocations:
 
 ```text
 CodexBarCLI usage --provider ID --source SOURCE --json --no-color
+CodexBarCLI diagnose --provider ID --format json --redact
 ```
+
+The `diagnose` command reads its source from the staged config; the launcher's `--source` remains required.
+
+`auto` is used for nonsecret per-profile Codex home configuration while retaining the CLI's normal automatic
+OAuth/CLI fallback and Automatic source attribution.
 
 It uses `memfd_create`, falling back to a mode-0600 temporary file unlinked before any config byte is written. The
 watchdog owns the descriptor and exposes `/proc/<watchdog-pid>/fd/<fd>` through `CODEXBAR_CONFIG` only to the CLI
@@ -37,7 +43,5 @@ packaging accepts only the launcher whose architecture matches its Linux CLI pay
 `wsl-cli/CodexBarStagingLauncher`.
 
 The launcher cannot selectively remove `CODEXBAR_CONFIG` from processes spawned internally by the unchanged CLI.
-`TestsLinux/StagingLauncher/test_unchanged_cli_routes.sh` therefore traces the release-matched unchanged CLI for
-every enabled API route, every Windows-exposed manual web route, and each environment-projected OpenCode bridge
-route. The release job fails if a route executes anything except the staging launcher and its sibling CLI, or if a
-credential canary reaches argv or captured output. A new route must be added to that gate before Windows exposes it.
+`TestsLinux/StagingLauncher/test.sh` checks the launcher's argument contract, staging, timeouts and cleanup using
+a fixture CLI. These offline tests do not certify live provider authentication.

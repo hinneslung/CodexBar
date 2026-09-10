@@ -9,7 +9,17 @@ enum WindowsProviderOperationLock {
         operation: () throws -> T) throws -> T
     {
         try self.withLock(
-            provider: provider,
+            profileID: .defaultID(for: provider),
+            timeoutMilliseconds: self.timeoutMilliseconds,
+            operation: operation)
+    }
+
+    static func withLock<T>(
+        profileID: WindowsProviderProfileID,
+        operation: () throws -> T) throws -> T
+    {
+        try self.withLock(
+            profileID: profileID,
             timeoutMilliseconds: self.timeoutMilliseconds,
             operation: operation)
     }
@@ -19,10 +29,21 @@ enum WindowsProviderOperationLock {
         timeoutMilliseconds: DWORD,
         operation: () throws -> T) throws -> T
     {
-        guard self.isSafeProviderID(provider.rawValue), let sid = currentUserSID() else {
+        try self.withLock(
+            profileID: .defaultID(for: provider),
+            timeoutMilliseconds: timeoutMilliseconds,
+            operation: operation)
+    }
+
+    static func withLock<T>(
+        profileID: WindowsProviderProfileID,
+        timeoutMilliseconds: DWORD,
+        operation: () throws -> T) throws -> T
+    {
+        guard WindowsProviderProfileID.isValid(profileID.rawValue), let sid = currentUserSID() else {
             throw WindowsProviderCredentialVaultError.unsupportedProvider
         }
-        let name = "Local\\CodexBar.Provider.\(sid).\(provider.rawValue)"
+        let name = "Local\\CodexBar.Provider.\(sid).\(profileID.rawValue)"
         let mutex = WindowsWideString.withPointer(name) { CreateMutexW(nil, false, $0) }
         guard let mutex else { throw WindowsProviderCredentialVaultError.storageFailed }
         defer { _ = CloseHandle(mutex) }
@@ -51,12 +72,5 @@ enum WindowsProviderOperationLock {
         guard ConvertSidToStringSidW(user.User.Sid, &sidString), let sidString else { return nil }
         defer { _ = LocalFree(UnsafeMutableRawPointer(sidString)) }
         return String(decodingCString: sidString, as: UTF16.self)
-    }
-
-    private static func isSafeProviderID(_ value: String) -> Bool {
-        guard !value.isEmpty, value.utf8.count <= 64 else { return false }
-        return value.unicodeScalars.allSatisfy {
-            (48...57).contains($0.value) || (97...122).contains($0.value) || $0.value == 45
-        }
     }
 }
