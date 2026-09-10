@@ -613,14 +613,28 @@ jobs:
           "checksum=$($installer.ChecksumPath)" >> $env:GITHUB_OUTPUT
 
       - name: Verify native installer lifecycle
+        id: lifecycle
         timeout-minutes: 10
         shell: pwsh
         run: |
           & ./TestsLinux/StagingLauncher/test_windows_installer_cleanup.ps1
+          & ./TestsLinux/StagingLauncher/test_windows_installer_diagnostics.ps1
           & ./TestsLinux/StagingLauncher/test_windows_installer.ps1 `
             -Installer '${{ steps.installer.outputs.asset }}' `
             -Archive '${{ steps.package.outputs.asset }}' `
-            -AssetArchitecture '${{ matrix.asset-arch }}'
+            -AssetArchitecture '${{ matrix.asset-arch }}' `
+            -DiagnosticsDirectory (Join-Path $env:RUNNER_TEMP 'codexbar-installer-diagnostics-${{ matrix.asset-arch }}')
+
+      - name: Upload installer failure diagnostics
+        if: failure() && steps.lifecycle.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codexbar-installer-diagnostics-${{ matrix.asset-arch }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/codexbar-installer-diagnostics-${{ matrix.asset-arch }}/*.log
+            ${{ runner.temp }}/codexbar-installer-diagnostics-${{ matrix.asset-arch }}/*.txt
 
       - name: Upload release assets
         if: github.event_name == 'release'
